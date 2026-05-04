@@ -1,0 +1,7 @@
+.env
+third_party/
+third_party-src-probe/
+results/raw/*
+results/processed/*
+plots/generated/*
+!.gitkeep

@@ -1,0 +1,27 @@
+services:
+  temeraire-dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    container_name: temeraire-dev
+    working_dir: /workspace
+    stdin_open: true
+    tty: true
+    privileged: true
+    cap_add:
+      - PERFMON
+      - SYS_ADMIN
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    volumes:
+      - .:/workspace
+    environment:
+      REDIS_VERSION: 6.0.9
+      GPERFTOOLS_REF: gperftools-2.16
+      GOOGLE_TCMALLOC_REF: 8e534f50707469baac732559494559db95732e12
+      BENCH_PORT: 6380
+      REDIS_TRIALS: 2000
+      REDIS_REQUESTS_PER_TRIAL: 1000000
+      REDIS_CLIENTS: 50
+      REDIS_PIPELINE: 16

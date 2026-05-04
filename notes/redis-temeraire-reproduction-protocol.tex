@@ -1,0 +1,286 @@
+\documentclass[a4paper,11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage[a4paper,margin=2.5cm]{geometry}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{xcolor}
+\usepackage{listings}
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=blue!50!black,
+  urlcolor=blue!50!black
+}
+
+\lstdefinestyle{codestyle}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible
+}
+
+\title{Protocol: Adapting the Repository Toward the Temeraire Redis Experiment}
+\author{}
+\date{May 4, 2026}
+
+\begin{document}
+
+\maketitle
+
+\section{Purpose}
+
+This note documents what had to be adjusted so that the repository more closely reflects the Redis case-study experiment from the OSDI'21 Temeraire paper
+(\emph{Beyond malloc efficiency to fleet efficiency: a hugepage-aware memory allocator}).
+It is not a full reproduction of the paper, because the paper also contains Google-internal production and fleet-scale evaluation that cannot be reproduced in this environment.
+The goal of this protocol is to record:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item what the repository originally did,
+  \item why that was not yet a close paper reproduction,
+  \item what we changed,
+  \item what failed during setup,
+  \item and what final state now works.
+\end{itemize}
+
+\section{Initial Repository State}
+
+At the beginning, the repository was a useful scaffold for allocator experiments, but it was not yet aligned with the paper's Redis experiment.
+In particular:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item the setup used Redis \texttt{7.2.5} instead of Redis \texttt{6.0.9},
+  \item the comparison was primarily \texttt{glibc} versus open-source \texttt{gperftools} \texttt{tcmalloc},
+  \item there was no Temeraire versus legacy pageheap comparison,
+  \item the README could be read as if this might reproduce the paper more directly than it actually did.
+\end{itemize}
+
+After checking the paper text, it became clear that the public seminar reproduction should focus on the Redis case study only, and should be explicit about that scope.
+
+\section{Paper-Relevant Clarifications}
+
+From the paper, the most relevant constraints for this repository are:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item the Redis experiment uses Redis \texttt{6.0.9},
+  \item the important allocator comparison is \texttt{Temeraire} versus the legacy \texttt{TCMalloc} pageheap,
+  \item the workload consists of repeated list operations: pushing five elements and then reading those five elements,
+  \item the paper reports \texttt{2000} trials with \texttt{1,000,000} requests per trial,
+  \item the fleet experiment and production rollout are not reproducible here.
+\end{itemize}
+
+This led to the main design decision: the repository should be reframed as a small-scale reproduction of the Redis case study methodology, not as a reproduction of the full paper evaluation.
+
+\section{README Changes}
+
+The first adjustment was editorial.
+The README was updated so that it now:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item states explicitly that this repository is not a reproduction of the fleet-scale part of the paper,
+  \item explains that the relevant local target is the Redis case study,
+  \item clarifies that the desired allocator comparison is legacy pageheap versus Temeraire,
+  \item documents that historical public \texttt{google/tcmalloc} code is used to approximate the paper-era setup.
+\end{itemize}
+
+This clarification is important for later seminar work because it prevents overclaiming what the artifact reproduces.
+
+\section{Build and Environment Adjustments}
+
+\subsection{Docker and Toolchain}
+
+The container environment was adjusted to support the paper-shaped workflow:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Redis was pinned to \texttt{6.0.9},
+  \item \texttt{gperftools} was pinned to \texttt{2.16},
+  \item \texttt{clang} was added to the container toolchain,
+  \item defaults for trial count, requests per trial, client count, and pipeline depth were added to \texttt{docker-compose.yml}.
+\end{itemize}
+
+The important point is that the container is no longer just a generic Linux environment; it now encodes a closer approximation of the paper's Redis experiment.
+
+\subsection{Historical tcmalloc Source}
+
+The major technical step was adding a historical public \texttt{google/tcmalloc} checkout.
+The paper points to the TCMalloc repository, but the current repository has evolved beyond the paper artifact.
+To get closer to the paper era, a historical commit was needed.
+
+The chosen commit was:
+
+\begin{lstlisting}[style=codestyle]
+8e534f50707469baac732559494559db95732e12
+\end{lstlisting}
+
+This commit was chosen because it still contains the mechanism needed to disable HPAA/Temeraire-style hugepage-aware behavior via \texttt{want\_no\_hpaa}, which makes a legacy versus Temeraire split possible in the public code.
+
+\section{Setup Script Changes}
+
+The setup script was extended substantially.
+It now:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item re-syncs repositories to pinned references even if they already exist locally,
+  \item clones Redis \texttt{6.0.9},
+  \item clones \texttt{gperftools} \texttt{2.16},
+  \item clones historical \texttt{google/tcmalloc},
+  \item installs \texttt{bazelisk} when missing,
+  \item builds Redis with \texttt{clang},
+  \item builds two allocator shared libraries from the historical TCMalloc source:
+  \begin{itemize}[leftmargin=1.5em]
+    \item a Temeraire-capable shared object,
+    \item a legacy shared object with \texttt{want\_no\_hpaa} linked in.
+  \end{itemize}
+\end{itemize}
+
+These libraries are copied into a stable install directory so that benchmark scripts can switch allocators through \texttt{LD\_PRELOAD}.
+
+\section{Benchmark Script Changes}
+
+The benchmark driver had to be reoriented toward the paper's Redis case study.
+The new script behavior is:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item allocator modes now include \texttt{legacy} and \texttt{temeraire},
+  \item Redis is launched with the selected allocator through \texttt{LD\_PRELOAD},
+  \item each trial performs the paper-shaped list operations:
+  \begin{itemize}[leftmargin=1.5em]
+    \item \texttt{LPUSH} of five values,
+    \item \texttt{LRANGE 0 4}.
+  \end{itemize}
+  \item per-trial and summary CSV output is generated,
+  \item the old \texttt{glibc}/\texttt{gperftools} comparison path remains available for side experiments, but is no longer the main paper-aligned comparison.
+\end{itemize}
+
+The paper's exact surrounding environment cannot be reproduced, but this script now matches the experiment shape more closely than the original repository state.
+
+\section{Dead Ends and Failed Attempts}
+
+The adaptation process involved some trial and error.
+This is worth documenting because these failures explain why the final solution looks the way it does.
+
+\subsection{Modern TCMalloc Build Attempt}
+
+The first idea was to build a modern \texttt{google/tcmalloc} checkout and wrap it externally via CMake.
+That path failed because upstream CMake/test-linkage behavior around whole-archive handling caused build conflicts.
+In other words, the modern repository was buildable in general, but not in a convenient way for this exact wrapper strategy.
+
+\subsection{External Bazel Wrapper Workspace}
+
+The second idea was to build a wrapper in a separate Bazel workspace.
+That also failed, because the wrapper did not naturally inherit all of TCMalloc's workspace dependencies, such as external Abseil references.
+
+\subsection{Visibility Constraint}
+
+Another obstacle was target visibility.
+The \texttt{want\_no\_hpaa} mechanism was not globally visible; it was restricted in a way that prevented arbitrary external linkage.
+The workaround was to place the wrapper target inside the \texttt{tcmalloc/testing} package, where the needed visibility was permitted.
+
+\subsection{Why the Final Approach Worked}
+
+The successful strategy was therefore:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item use a historical public commit that still exposes legacy-versus-Temeraire behavior,
+  \item add a small wrapper source file directly into the cloned TCMalloc tree,
+  \item add Bazel targets in a package where the required visibility is valid,
+  \item produce two small shared libraries that can be switched with \texttt{LD\_PRELOAD}.
+\end{itemize}
+
+\section{Verification Steps}
+
+Several checks were used to verify that the adapted repository actually works.
+
+\subsection{Container Build}
+
+The following commands succeeded:
+
+\begin{lstlisting}[style=codestyle]
+docker compose build
+docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
+\end{lstlisting}
+
+This confirmed that the complete toolchain, source checkouts, and allocator builds can be reproduced in the container.
+
+\subsection{Allocator Artifacts}
+
+After setup, the following shared libraries existed:
+
+\begin{lstlisting}[style=codestyle]
+third_party/install/google-tcmalloc/lib/libtcmalloc_legacy.so
+third_party/install/google-tcmalloc/lib/libtcmalloc_temeraire.so
+\end{lstlisting}
+
+\subsection{Smoke Benchmark}
+
+A small smoke test was run with reduced trial counts and request counts before attempting any large run.
+This verified that both allocator modes could execute end-to-end through the benchmark harness.
+
+\subsection{Runtime Preload Verification}
+
+An additional check script launched Redis under both allocator modes and inspected \texttt{/proc/\$pid/maps}.
+This showed that:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{legacy} mode actually loaded \texttt{libtcmalloc\_legacy.so},
+  \item \texttt{temeraire} mode actually loaded \texttt{libtcmalloc\_temeraire.so}.
+\end{itemize}
+
+This matters because Redis may still report \texttt{mem\_allocator: libc} from its own build metadata, even though the process allocator has been changed at runtime via \texttt{LD\_PRELOAD}.
+The preload verification therefore provides stronger evidence that the allocator switch is real.
+
+\section{Current Final State}
+
+In its current state, the repository now supports a more faithful small-scale approximation of the paper's Redis case study:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Redis version aligned to \texttt{6.0.9},
+  \item historical public TCMalloc source included,
+  \item legacy and Temeraire allocator variants built as shared objects,
+  \item benchmark script aligned to the push-five/read-five workload shape,
+  \item Docker defaults prepared for repeated trials,
+  \item runtime verification added to ensure the chosen allocator is truly loaded.
+\end{itemize}
+
+This is likely sufficient for a seminar artifact that aims to be methodologically close to the Redis experiment, provided the report clearly states what remains outside the scope of reproduction.
+
+\section{Remaining Limitations}
+
+The following limitations still apply and should be stated explicitly in seminar material:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item the experiment is not run on Google production hardware,
+  \item the fleet-scale and rollout sections of the paper are not reproduced,
+  \item the exact compiler, kernel, and machine topology from the paper are only approximated,
+  \item containerization may itself affect allocator and hugepage behavior,
+  \item the public TCMalloc source is only a historical approximation of the paper artifact, not a guaranteed byte-identical reproduction of the internal setup.
+\end{itemize}
+
+These limitations do not invalidate the artifact, but they define its proper claim: it is a careful public reproduction attempt of the Redis case-study portion of the paper.
+
+\section{Recommended Seminar Framing}
+
+A suitable and honest framing for the seminar is:
+
+\begin{quote}
+This artifact reproduces the methodology of the Redis case study from the Temeraire paper as closely as possible with public code and commodity hardware, while explicitly not claiming reproduction of the paper's fleet-scale production evaluation.
+\end{quote}
+
+\section{Minimal Working Commands}
+
+The following command sequence captures the final working workflow:
+
+\begin{lstlisting}[style=codestyle]
+docker compose build
+docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/check_allocator_preload.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh legacy"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
+\end{lstlisting}
+
+For smoke testing, the environment variables for trial count and request count can be lowered temporarily.
+For seminar measurements, the defaults should remain documented and any deviations should be recorded.
+
+\end{document}
