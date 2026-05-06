@@ -1,189 +1,243 @@
-# TEMERAIRE Seminar Reproduction
+# Temeraire Redis Reproduction Artifact
 
-This repository is a reproducible starting point for a seminar project on:
+This repository contains a Docker-based reproduction artifact for the Redis case
+study from:
 
-> Beyond malloc efficiency to fleet efficiency: a hugepage-aware memory allocator
+> A.H. Hunter et al. "Beyond malloc efficiency to fleet efficiency: a
+> hugepage-aware memory allocator." OSDI 2021.
 
-The seminar goal is to reproduce the paper's experiments as closely as practical on accessible hardware. This repository therefore focuses on the paper's Redis case study methodology and on comparing TCMalloc's legacy pageheap against the hugepage-aware Temeraire backend as faithfully as the public open-source code allows.
+The artifact focuses on the part of the paper that can be reproduced with
+public code and commodity hardware: comparing a historical public TCMalloc build
+using the legacy pageheap against the same public code path with the
+hugepage-aware Temeraire backend.
 
-It does **not** claim to reproduce Google's fleet-scale evaluation, 1% production experiment, or warehouse-scale rollout. Those parts of the paper depend on internal infrastructure, workload diversity, telemetry, and hardware that are not available in this environment.
+It does not attempt to reproduce Google's warehouse-scale fleet experiment, the
+1% production experiment, or the final rollout. Those results depend on
+Google-internal infrastructure, production telemetry, workload diversity, and
+hardware that are not available here.
 
-## Scope
+## Reproduction Claim
 
-This scaffold is designed for three practical outcomes:
+This project is intended to support the following limited claim:
 
-1. Recreate the Redis allocator comparison from the paper as closely as possible with public code.
-2. Record system, allocator, kernel, THP, and benchmark metadata for reproducibility.
-3. Leave a clean place to add microbenchmarks, plots, notes, and report artifacts.
+> The Redis case-study methodology from the Temeraire paper can be approximated
+> with public Redis and TCMalloc code by running repeated Redis list-operation
+> benchmarks under legacy TCMalloc and Temeraire allocator modes.
 
-The intended experiment target is:
+The project is not a byte-identical reconstruction of the paper environment.
+Expected deviations include host CPU, kernel version, Transparent Huge Page
+(THP) settings, Docker behavior, compiler version, and the fact that the public
+TCMalloc source is only an approximation of the internal paper artifact.
 
-- Redis `6.0.9`
-- a paper-era public `google/tcmalloc` ref that still exposes both Temeraire and the `want_no_hpaa` legacy opt-out hook
-- repeated `redis-benchmark` trials shaped after the paper's Redis evaluation
+## What Is Reproduced
 
-The main unavoidable limitations are:
+The paper describes a Redis experiment with:
 
-- no Google-internal fleet telemetry or A/B framework
-- no warehouse-scale colocated workload mix
-- no identical Skylake production servers unless your host happens to match them
-- no guarantee that the public ref is byte-for-byte identical to Google's exact internal paper artifact
+- Redis 6.0.9.
+- TCMalloc's legacy pageheap as the baseline.
+- Temeraire as the hugepage-aware allocator variant.
+- 2000 trials of `redis-benchmark` per configuration.
+- 1,000,000 requests per trial.
+- A workload that pushes five list elements and reads those five elements.
+
+This repository encodes that experiment shape in `scripts/run_redis_benchmark.sh`.
+It also records system, allocator, THP, and benchmark metadata so results can be
+interpreted and compared later.
 
 ## Repository Layout
 
 ```text
 .
-├── docker/
-│   └── Dockerfile
-├── notes/
-│   └── .gitkeep
-├── plots/
-│   └── generated/
-│       └── .gitkeep
-├── results/
-│   ├── processed/
-│   │   └── .gitkeep
-│   └── raw/
-│       └── .gitkeep
-├── scripts/
-│   ├── collect_system_info.sh
-│   ├── run_perf.sh
-│   ├── run_redis_benchmark.sh
-│   └── setup_env.sh
-└── docker-compose.yml
+|-- docker/
+|   |-- Dockerfile
+|   `-- tcmalloc_bazel_wrapper/
+|-- notes/
+|   `-- redis-temeraire-reproduction-protocol.tex
+|-- plots/
+|   `-- generated/
+|-- results/
+|   |-- processed/
+|   `-- raw/
+|-- scripts/
+|   |-- check_allocator_preload.sh
+|   |-- collect_system_info.sh
+|   |-- run_perf.sh
+|   |-- run_redis_benchmark.sh
+|   `-- setup_env.sh
+|-- docker-compose.yml
+`-- README.md
 ```
+
+Generated third-party sources and build outputs live under `third_party/` after
+setup. Raw benchmark output is written to `results/raw/`.
 
 ## Prerequisites
 
-- Docker Desktop with Linux containers enabled
-- Docker Compose
+- Docker Desktop or Docker Engine with Linux containers.
+- Docker Compose.
+- Enough CPU time for the full Redis experiment. The default 2000-trial runs are
+  intentionally expensive.
 
-The container is intentionally configured with elevated privileges because `perf` and some memory-management observations are hard or impossible to do meaningfully in an unprivileged container.
+The container runs with elevated privileges because `perf`, `/proc` inspection,
+and memory-management observations are otherwise limited or unavailable.
 
-## Quick Start
+## Quick Smoke Test
 
-This is the practical container workflow. It sets up the experiment environment and runs the public-code approximation of the Redis case study.
-
-Build the container image:
+Use this path first to verify that the artifact builds and that both allocator
+modes can run. The smoke test intentionally reduces the benchmark size.
 
 ```bash
 docker compose build
+docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/check_allocator_preload.sh"
+docker compose run --rm -e REDIS_TRIALS=2 -e REDIS_REQUESTS_PER_TRIAL=1000 temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh legacy"
+docker compose run --rm -e REDIS_TRIALS=2 -e REDIS_REQUESTS_PER_TRIAL=1000 temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
 ```
 
-Enter the experiment container:
+The preload check should show `libtcmalloc_legacy.so` for `legacy` mode and
+`libtcmalloc_temeraire.so` for `temeraire` mode in `/proc/<pid>/maps`.
+
+## Full Experiment
+
+After the smoke test succeeds, collect environment metadata and run both
+allocator modes with the paper-shaped defaults from `docker-compose.yml`.
 
 ```bash
-docker compose run --rm temeraire-dev
+docker compose run --rm temeraire-dev bash -lc "./scripts/collect_system_info.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh legacy"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
 ```
 
-Inside the container, build Redis and the allocator dependencies:
+Default benchmark parameters:
+
+| Variable | Default | Meaning |
+| --- | ---: | --- |
+| `REDIS_TRIALS` | `2000` | Trials per allocator mode |
+| `REDIS_REQUESTS_PER_TRIAL` | `1000000` | Requests per Redis benchmark invocation |
+| `REDIS_CLIENTS` | `50` | Concurrent benchmark clients |
+| `REDIS_PIPELINE` | `16` | Redis benchmark pipeline depth |
+| `BENCH_PORT` | `6380` | Redis server port inside the container |
+
+If any value is changed, record it in the report and in result notes.
+
+## Optional Perf Collection
+
+`scripts/run_perf.sh` records a smaller `perf stat` run for one allocator mode.
 
 ```bash
-./scripts/setup_env.sh
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_perf.sh legacy"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_perf.sh temeraire"
 ```
 
-Collect environment metadata:
+The script tracks:
 
-```bash
-./scripts/collect_system_info.sh
+- `dTLB-load-misses`
+- `dTLB-loads`
+- `cycles`
+- `instructions`
+- `page-faults`
+
+Depending on the host kernel and Docker setup, some counters may be unavailable
+or multiplexed. Treat perf output as environment-dependent metadata unless the
+counter availability is verified.
+
+## Outputs
+
+`scripts/run_redis_benchmark.sh` creates timestamped directories under:
+
+```text
+results/raw/redis/<timestamp>-<allocator>/
 ```
 
-Collect environment metadata before benchmarking:
+Each run directory contains:
 
-```bash
-./scripts/collect_system_info.sh
+- `trials.csv`: one row per trial and operation.
+- `summary.csv`: mean requests per second per operation.
+- `memory-before.txt`: process and memory metadata before the trials.
+- `memory-after.txt`: process, Redis, malloc, and memory metadata after the
+  trials.
+- `trial-XXXX-lpush.csv` and `trial-XXXX-lrange.csv`: raw Redis benchmark CSV
+  output for each trial.
+- `redis-server.log`: Redis server log for the run.
+
+`scripts/collect_system_info.sh` writes timestamped host/container metadata to:
+
+```text
+results/raw/system-info/
 ```
 
-Run the Redis comparison workflow:
+Keep raw outputs unchanged. Put derived tables, plots, and summaries in
+`results/processed/` or `plots/generated/`.
 
-```bash
-./scripts/run_redis_benchmark.sh legacy
-./scripts/run_redis_benchmark.sh temeraire
-```
+## Exact Source Versions
 
-In this repository:
+The default pinned sources are configured in `docker-compose.yml`:
 
-- `legacy` means a paper-era public `google/tcmalloc` build with `want_no_hpaa` linked, forcing the legacy pageheap path
-- `temeraire` means the matching public `google/tcmalloc` build using the hugepage-aware pageheap
-- `gperftools` remains available only as an optional side baseline
+| Component | Ref |
+| --- | --- |
+| Redis | `6.0.9` |
+| gperftools | `gperftools-2.16` |
+| google/tcmalloc | `8e534f50707469baac732559494559db95732e12` |
 
-Optionally collect `perf stat` metrics:
+The historical `google/tcmalloc` ref is used because it still exposes the
+`want_no_hpaa` hook needed to build a legacy pageheap variant next to the
+Temeraire-capable variant.
 
-```bash
-./scripts/run_perf.sh legacy
-./scripts/run_perf.sh temeraire
-```
+## Allocator Modes
 
-## Important Notes
+`scripts/run_redis_benchmark.sh` accepts four modes:
 
-### 1. This is a Linux experiment environment
+| Mode | Purpose |
+| --- | --- |
+| `legacy` | Main baseline: historical public `google/tcmalloc` with `want_no_hpaa` linked to force the legacy pageheap path. |
+| `temeraire` | Main treatment: matching public `google/tcmalloc` build using the hugepage-aware path. |
+| `glibc` | Optional side baseline using the system allocator. |
+| `gperftools` | Optional side baseline using open-source gperftools TCMalloc. |
 
-The project folder can live on Windows, but the actual experiment should run inside the Linux container. That is where Redis, `perf`, `/sys/kernel/mm/transparent_hugepage`, and allocator preload behavior are closest to the paper's assumptions.
+For paper-aligned results, compare `legacy` against `temeraire`. Treat `glibc`
+and `gperftools` only as additional context.
 
-### 2. THP settings come from the host kernel
+## Reproducibility Checklist
 
-Containers share the host kernel. That means:
+Include the following in any report or external result package:
 
-- Transparent Huge Pages are not fully controlled by the image itself.
-- The values in `/sys/kernel/mm/transparent_hugepage/*` reflect the Docker Linux VM or host kernel backing Docker Desktop.
-- These settings must be recorded in the report, because they can materially affect results.
+- Git commit of this repository.
+- Docker image rebuild date.
+- Host OS and Docker version.
+- Kernel version reported inside the container.
+- CPU model and core count.
+- Memory size and NUMA topology if relevant.
+- THP `enabled` and `defrag` settings.
+- Redis version.
+- TCMalloc commit.
+- Compiler and build flags, if changed.
+- Exact benchmark command lines.
+- All non-default environment variables.
+- Trial count, request count, client count, and pipeline depth.
+- Raw result directory names.
+- Method used to aggregate results.
+- Known deviations from the OSDI paper.
 
-### 3. Docker is good for reproducibility, not for perfect fidelity
+## Common Pitfalls
 
-This setup is a defensible small-scale reproduction platform, but it is not equivalent to:
+- Redis may report `mem_allocator: libc` because it was built with
+  `MALLOC=libc`. The active allocator is still changed at runtime through
+  `LD_PRELOAD`; use `scripts/check_allocator_preload.sh` to verify the loaded
+  shared object.
+- THP settings come from the host kernel or Docker VM, not from the image alone.
+  Always record them.
+- Docker improves setup reproducibility but does not make the benchmark
+  hardware-identical to the paper.
+- The full benchmark can take a long time. Use the smoke test first.
+- Do not compare a smoke-test run against the paper. Smoke-test parameters are
+  only for build and workflow validation.
 
-- Google's warehouse-scale machines
-- fleet-wide workload mixes
-- Google's production telemetry and experiment framework
-- the paper's 1% fleet rollout
+## Suggested Reporting Framing
 
-### 4. This repository targets the Redis case study, not the fleet experiment
+Use cautious wording such as:
 
-The paper contains several layers of evaluation:
+> This artifact reproduces the Redis case-study methodology from the Temeraire
+> paper as closely as practical with public source code and commodity hardware.
+> It does not reproduce the paper's fleet-scale production evaluation.
 
-- application case studies
-- a Redis experiment
-- a 1% fleet experiment
-- a full rollout analysis
-
-This repository can realistically target only the Redis-style public-code experiment. Any report using this repository should explicitly say that it is a **small-scale reproduction of the Redis case study methodology**, not a reproduction of the fleet-scale results.
-
-### 5. The allocator comparison must be framed correctly
-
-The paper's relevant allocator comparison is not:
-
-- `glibc` versus open-source `gperftools`
-
-It is closer to:
-
-- TCMalloc with the legacy pageheap
-- TCMalloc with the hugepage-aware Temeraire backend
-
-Because the public `google/tcmalloc` repository evolved after the paper, this repository pins a historical public ref that still exposes the legacy opt-out hook. Any remaining gaps versus the paper should still be stated plainly in the seminar write-up.
-
-## Suggested Next Steps
-
-1. Pin the allocator source to a documented public ref and record that exact ref in the report.
-2. Run repeated Redis trials for both `legacy` and `temeraire`.
-3. Save all raw outputs in `results/raw/`.
-4. Add summary scripts that compute mean, spread, and deltas across repeated trials.
-5. Optionally add a side experiment with `glibc` for context, but keep it clearly separate from the paper-faithful comparison.
-
-## Reporting Guidance
-
-Document at minimum:
-
-- host OS and Docker version
-- container image base
-- kernel version seen inside the container
-- THP status
-- CPU model
-- Redis version
-- `google/tcmalloc` commit or release
-- compiler and build flags
-- benchmark trial count
-- benchmark commands
-- all run counts and averaging method
-- every known deviation from the paper
-
-That documentation will matter as much as the benchmark numbers themselves.
+That distinction is central to interpreting the results honestly.

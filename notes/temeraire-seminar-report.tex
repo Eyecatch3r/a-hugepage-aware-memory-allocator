@@ -1,0 +1,295 @@
+% ACM seminar report draft based on the provided HHU template.
+
+\documentclass[sigconf]{acmart}
+\acmConference{Master-Seminar}{Aktuelle Trends in der Systemsoftware}{SoSe 2026}
+
+\settopmatter{
+  printacmref=false,
+  printccs=false,
+  printfolios=false
+}
+\renewcommand\footnotetextcopyrightpermission[1]{}
+
+\usepackage{booktabs}
+\usepackage{listings}
+
+\lstdefinestyle{commandstyle}{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  frame=single
+}
+
+\begin{document}
+
+\title{Reproducing the Redis Case Study of Temeraire}
+
+\author{TODO: Vorname Nachname}
+\email{TODO: email@hhu.de}
+\affiliation{%
+  \institution{Heinrich-Heine-Universit\"at}
+  \city{D\"usseldorf}
+  \state{Nordrhein-Westfalen}
+  \country{Deutschland}
+}
+
+\renewcommand{\shortauthors}{TODO: Nachname}
+
+\begin{abstract}
+Temeraire is a hugepage-aware extension of TCMalloc that aims to improve
+application performance by increasing hugepage coverage while avoiding excessive
+fragmentation. The original OSDI 2021 paper evaluates Temeraire in individual
+applications, a Google fleet experiment, and a production rollout. This report
+focuses on the part that is realistically reproducible with public code: the
+Redis 6.0.9 case study. A Docker-based artifact was built to compare a
+historical public TCMalloc revision in two configurations: a legacy pageheap
+baseline and a Temeraire-capable variant. The artifact records the software
+versions, Transparent Huge Page settings, benchmark parameters, allocator
+preload state, and raw Redis benchmark outputs. The resulting reproduction is
+methodologically useful but intentionally narrow: it can test whether the Redis
+benchmark shape can be recreated, but it cannot reproduce Google's
+warehouse-scale conditions or fleet-level claims.
+\end{abstract}
+
+\keywords{memory allocation, huge pages, TCMalloc, Temeraire, Redis,
+reproducibility}
+
+\maketitle
+
+\section{Introduction}
+
+Memory allocation is not only a local implementation detail of C and C++
+programs. In large systems it can influence the placement of memory, the
+availability of huge pages, and therefore the number of expensive address
+translation events. Hunter et al. argue that allocator design can improve
+``fleet efficiency'' by reducing overhead outside the allocator itself
+\cite{hunter2021temeraire}. Their allocator extension, Temeraire, changes the
+pageheap of TCMalloc so that allocations are packed with awareness of
+hugepage-sized regions.
+
+The goal of this seminar artifact is not to repeat the complete paper. The
+paper's most important results come from Google's production environment, where
+many workloads share warehouse-scale computers and where telemetry is available
+across large machine populations. That environment is not public. A faithful
+seminar reproduction must therefore restrict its claim. The reproducible target
+chosen here is the Redis case study described in the paper: Redis 6.0.9 is run
+with TCMalloc's legacy pageheap and with Temeraire, and both configurations are
+measured with repeated \texttt{redis-benchmark} trials.
+
+This report has two contributions. First, it explains the technical background
+needed to understand why a hugepage-aware allocator can matter. Second, it
+documents a public reproduction artifact whose main design goal is
+reproducibility: pinned source versions, containerized setup, explicit benchmark
+parameters, raw output preservation, and documented deviations from the paper.
+
+\section{Background}
+
+\subsection{Huge Pages and TLB Pressure}
+
+Virtual memory requires translating virtual addresses to physical addresses.
+Processors cache these translations in translation lookaside buffers (TLBs).
+When a working set is large, the number of ordinary pages may exceed practical
+TLB coverage, causing misses and page-table walks. Huge pages reduce this
+pressure because one TLB entry can cover a larger virtual memory range. On x86,
+a common huge page size is 2 MiB instead of the usual 4 KiB page size.
+
+Huge pages are not free. They require contiguous physical memory and aligned
+virtual mappings. Fragmentation can therefore prevent the operating system from
+backing a mapping with a huge page. A user-space allocator can make this easier
+or harder: if it returns small pieces of memory from the middle of otherwise
+useful hugepage regions, the kernel may have to split huge pages or may fail to
+form them later.
+
+\subsection{Temeraire}
+
+Temeraire modifies TCMalloc's pageheap so that the allocator reasons about
+hugepage-sized regions. The paper describes several mechanisms for packing live
+allocations onto some huge pages while trying to make other huge pages empty
+enough to return to the operating system. The key idea is a trade-off: allocator
+decisions may become more deliberate, but better placement can reduce TLB costs
+in application code.
+
+The paper reports improvements in application studies and in a fleet experiment.
+For this artifact, the important detail is the Redis experiment. The authors
+state that Redis 6.0.9 was evaluated with Temeraire and with TCMalloc's legacy
+pageheap as a baseline. Each configuration used 2000 trials of
+\texttt{redis-benchmark}, with each trial issuing 1,000,000 requests that push
+five elements and read those five elements.
+
+\section{Reproduction Scope}
+
+The reproduction scope is deliberately smaller than the paper scope. Table
+\ref{tab:scope} summarizes the distinction.
+
+\begin{table}[h]
+  \caption{Reproduction scope of the seminar artifact.}
+  \label{tab:scope}
+  \begin{tabular}{@{}lll@{}}
+    \toprule
+    Paper component & Artifact status & Reason \\
+    \midrule
+    Redis case study & Targeted & Uses public Redis and TCMalloc code \\
+    Application studies & Not reproduced & Workloads are internal or complex \\
+    1\% fleet experiment & Not reproduced & Requires Google fleet telemetry \\
+    Full rollout & Not reproduced & Requires production deployment data \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+This restriction is not merely practical; it is also necessary for scientific
+honesty. The artifact can evaluate whether the Redis experiment shape is
+recreated on a local machine. It cannot validate the paper's aggregate
+warehouse-scale savings.
+
+\section{Artifact Design}
+
+The repository is organized around a Docker container. The container provides a
+Linux environment with compiler tools, Redis tooling, \texttt{perf}, and build
+dependencies. The host directory is mounted into the container so that raw
+outputs are preserved in the repository tree.
+
+The setup script pins the relevant public source versions:
+
+\begin{itemize}
+  \item Redis \texttt{6.0.9};
+  \item \texttt{gperftools-2.16}, used only as an optional side baseline;
+  \item public \texttt{google/tcmalloc} commit
+  \texttt{8e534f50707469baac732559494559db95732e12}.
+\end{itemize}
+
+The historical TCMalloc revision is used because it still exposes the
+\texttt{want\_no\_hpaa} mechanism needed to construct a legacy pageheap variant.
+A small wrapper target is added inside the cloned TCMalloc tree. The setup then
+builds two shared objects: \texttt{libtcmalloc\_legacy.so} and
+\texttt{libtcmalloc\_temeraire.so}. Benchmark scripts select between them with
+\texttt{LD\_PRELOAD}.
+
+\section{Methodology}
+
+The main workflow is:
+
+\begin{lstlisting}[style=commandstyle]
+docker compose build
+docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/check_allocator_preload.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/collect_system_info.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh legacy"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
+\end{lstlisting}
+
+The benchmark script starts Redis, selects the allocator mode, records memory
+state, and executes repeated benchmark trials. Each trial first flushes the
+database and then performs two operations:
+
+\begin{itemize}
+  \item \texttt{LPUSH benchmark:list v1 v2 v3 v4 v5};
+  \item \texttt{LRANGE benchmark:list 0 4}.
+\end{itemize}
+
+The default configuration follows the paper-shaped Redis workload: 2000 trials,
+1,000,000 requests per trial, 50 clients, and pipeline depth 16. A separate
+smoke-test mode can reduce trial and request counts to validate the environment
+quickly, but those smoke-test results must not be compared to the paper.
+
+Reproducibility metadata is collected before the benchmark. This includes kernel
+version, operating-system release information, CPU model, memory summary,
+Transparent Huge Page settings, Redis version, TCMalloc commit, and allocator
+artifacts. The allocator preload check is important because Redis may report
+\texttt{mem\_allocator: libc} even when the process allocator is actually
+changed through \texttt{LD\_PRELOAD}.
+
+\section{Results to Report}
+
+The final measurement run should fill Table \ref{tab:results}. The table is
+left as a structured placeholder because benchmark numbers depend on the
+machine and should be produced from raw result directories rather than written
+from expectation.
+
+\begin{table}[h]
+  \caption{Redis benchmark summary to be filled from \texttt{summary.csv}.}
+  \label{tab:results}
+  \begin{tabular}{@{}llll@{}}
+    \toprule
+    Allocator & Operation & Mean RPS & Change vs. legacy \\
+    \midrule
+    legacy & LPUSH five elements & TODO & baseline \\
+    temeraire & LPUSH five elements & TODO & TODO \\
+    legacy & LRANGE five elements & TODO & baseline \\
+    temeraire & LRANGE five elements & TODO & TODO \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+The report should also describe variance, not just means. At minimum, the final
+analysis should include the number of trials, mean throughput per operation, and
+spread across trials. If \texttt{perf} is used, TLB-related counters should be
+reported only if counter availability and multiplexing are understood for the
+host system.
+
+\section{Discussion}
+
+The strongest part of this artifact is reproducibility of procedure. It records
+the exact public source versions, benchmark parameters, allocator mode, raw
+outputs, and system context. This makes the experiment inspectable and easier to
+rerun on another machine.
+
+The main limitation is fidelity. The original Redis experiments were run on
+Intel Skylake Xeon servers with a specific LLVM revision and Google's internal
+TCMalloc environment. A Docker container on a different host cannot guarantee
+the same kernel behavior, THP state, physical memory fragmentation, NUMA
+topology, or performance counter behavior. These factors matter especially for
+huge pages because hugepage availability is a property of the whole system, not
+only of the benchmark process.
+
+Another limitation is source identity. The public TCMalloc commit used here is a
+historical approximation chosen because it permits a legacy-versus-Temeraire
+split. It should not be presented as proof that the exact internal paper
+artifact was reconstructed.
+
+Despite these limitations, the reproduction remains useful. It forces the
+paper's Redis methodology into explicit, runnable steps and gives a concrete way
+to discuss which parts of systems papers are reproducible from public artifacts
+and which parts depend on inaccessible production context.
+
+\section{Conclusion}
+
+This artifact provides a narrow but honest reproduction path for the Temeraire
+paper. Instead of claiming to reproduce fleet-scale results, it focuses on the
+Redis case study and documents all relevant setup choices. The expected final
+outcome is not a universal confirmation of the paper's production claims, but a
+well-scoped comparison of legacy TCMalloc and Temeraire behavior under a public,
+repeatable Redis benchmark.
+
+\begin{acks}
+TODO: Add acknowledgements if required by the seminar.
+\end{acks}
+
+\begin{thebibliography}{9}
+
+\bibitem{hunter2021temeraire}
+A.H. Hunter, Chris Kennelly, Paul Turner, Darryl Gove, Tipp Moseley, and
+Parthasarathy Ranganathan.
+\newblock Beyond malloc efficiency to fleet efficiency: a hugepage-aware memory
+allocator.
+\newblock In \emph{15th USENIX Symposium on Operating Systems Design and
+Implementation (OSDI 21)}, 2021.
+
+\bibitem{redis609}
+Redis Team.
+\newblock Redis 6.0.9 and 5.0.10 release announcement.
+\newblock 2020.
+
+\bibitem{tcmalloc}
+Google.
+\newblock TCMalloc source repository.
+\newblock \url{https://github.com/google/tcmalloc}.
+
+\bibitem{transparenthugepages}
+Andrea Arcangeli.
+\newblock Transparent hugepage support.
+\newblock Linux kernel documentation, 2010.
+
+\end{thebibliography}
+
+\end{document}
+\endinput
