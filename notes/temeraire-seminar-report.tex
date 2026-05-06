@@ -61,7 +61,7 @@ programs. In large systems it can influence the placement of memory, the
 availability of huge pages, and therefore the number of expensive address
 translation events. Hunter et al. argue that allocator design can improve
 ``fleet efficiency'' by reducing overhead outside the allocator itself
-\cite{hunter2021temeraire}. Their allocator extension, Temeraire, changes the
+\cite{273711}. Their allocator extension, Temeraire, changes the
 pageheap of TCMalloc so that allocations are packed with awareness of
 hugepage-sized regions.
 
@@ -262,32 +262,8 @@ repeatable Redis benchmark.
 TODO: Add acknowledgements if required by the seminar.
 \end{acks}
 
-\begin{thebibliography}{9}
-
-\bibitem{hunter2021temeraire}
-A.H. Hunter, Chris Kennelly, Paul Turner, Darryl Gove, Tipp Moseley, and
-Parthasarathy Ranganathan.
-\newblock Beyond malloc efficiency to fleet efficiency: a hugepage-aware memory
-allocator.
-\newblock In \emph{15th USENIX Symposium on Operating Systems Design and
-Implementation (OSDI 21)}, 2021.
-
-\bibitem{redis609}
-Redis Team.
-\newblock Redis 6.0.9 and 5.0.10 release announcement.
-\newblock 2020.
-
-\bibitem{tcmalloc}
-Google.
-\newblock TCMalloc source repository.
-\newblock \url{https://github.com/google/tcmalloc}.
-
-\bibitem{transparenthugepages}
-Andrea Arcangeli.
-\newblock Transparent hugepage support.
-\newblock Linux kernel documentation, 2010.
-
-\end{thebibliography}
+\bibliographystyle{ACM-Reference-Format}
+\bibliography{temeraire-seminar-report}
 
 \end{document}
 \endinput
