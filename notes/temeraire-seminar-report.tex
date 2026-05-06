@@ -22,8 +22,8 @@
 
 \title{Reproducing the Redis Case Study of Temeraire}
 
-\author{TODO: Vorname Nachname}
-\email{TODO: email@hhu.de}
+\author{Aldo Costa}
+\email{aldo.costa@hhu.de}
 \affiliation{%
   \institution{Heinrich-Heine-Universit\"at}
   \city{D\"usseldorf}
@@ -31,7 +31,7 @@
   \country{Deutschland}
 }
 
-\renewcommand{\shortauthors}{TODO: Nachname}
+\renewcommand{\shortauthors}{Costa}
 
 \begin{abstract}
 Temeraire is a hugepage-aware extension of TCMalloc that aims to improve
@@ -251,16 +251,12 @@ and which parts depend on inaccessible production context.
 
 \section{Conclusion}
 
-This artifact provides a narrow but honest reproduction path for the Temeraire
-paper. Instead of claiming to reproduce fleet-scale results, it focuses on the
+This artifact provides a narrow but locally reproducible reproduction path for the Temeraire
+paper. Instead of claiming to reproduce fleet-scale results on WSC's, it focuses on the
 Redis case study and documents all relevant setup choices. The expected final
 outcome is not a universal confirmation of the paper's production claims, but a
 well-scoped comparison of legacy TCMalloc and Temeraire behavior under a public,
 repeatable Redis benchmark.
-
-\begin{acks}
-TODO: Add acknowledgements if required by the seminar.
-\end{acks}
 
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{temeraire-seminar-report}
