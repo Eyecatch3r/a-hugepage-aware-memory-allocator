@@ -22,6 +22,8 @@
   frame=single
 }
 
+\newcommand{\parencite}[1]{\citep{#1}}
+
 % Inline component labels matching Figure 6 colors
 \newcommand{\compbox}[2]{%
   \tikz[baseline=(X.base)]%
@@ -506,6 +508,58 @@ This heuristic expresses the paper's main design philosophy. The allocator is
 allowed to spend more effort making placement decisions because a bad placement
 can create long-lived fragmentation, while a good placement can improve
 hugepage coverage and reduce TLB stalls in application code.
+
+\section{Related Work}
+
+Prior work on memory allocation and huge pages can be grouped into
+allocator-side approaches and operating-system-side approaches. Temeraire is
+closest to allocator-side work because it changes object placement in user
+space rather than relying only on the kernel to recover hugepage-friendly
+layouts after the fact.
+
+SuperMalloc is a scalable multithreaded allocator for 64-bit systems
+\parencite{10.1145/2754169.2754178}. It is primarily designed for allocation
+speed and scalability, but it also considers huge pages for very large
+allocations. Compared with Temeraire, this is a more limited use of huge pages:
+SuperMalloc does not attempt to make the general pageheap layout
+hugepage-aware for diverse allocation sizes. Temeraire instead targets the
+fragmentation problem that arises when many smaller and medium-sized
+allocations interact with Transparent Huge Pages.
+
+MallocPool also addresses TLB efficiency, but with a different abstraction
+\parencite{8502619}. Its approach is to preallocate a large
+memory region and allocate chunks from it contiguously, so that dynamically
+allocated objects can benefit from more favorable TLB mapping. This is related
+to Temeraire's goal of improving translation behavior through allocation
+layout. However, Temeraire is integrated into TCMalloc's general-purpose
+pageheap and must handle a wider range of allocation sizes, release decisions,
+and production server workloads.
+
+LLAMA takes another allocator-side approach. It uses learning-based lifetime
+prediction for C++ server workloads and organizes allocations by predicted
+lifetime classes \parencite{10.1145/3373376.3378525}. The motivation is that huge pages
+are most effective when objects with compatible lifetimes are placed together:
+if short-lived and long-lived objects are mixed on the same hugepage, the
+long-lived objects can prevent the whole hugepage from becoming empty.
+Temeraire does not require machine-learning predictions. Instead, it uses
+online placement heuristics, especially longest-free-range information and
+allocation counts, to reduce fragmentation and improve hugepage coverage.
+
+Operating-system approaches such as Ingens and HawkEye manage huge pages from
+the kernel side \parencite{10.5555/3026877.3026931,10.1145/3297858.3304064}. These systems
+try to allocate, distribute, or reclaim huge pages more effectively without
+changing the application allocator itself. Such approaches are complementary to
+Temeraire but address a different layer of the problem. A kernel can only work
+with the virtual memory layout exposed by user space. If the allocator scatters
+live objects across hugepage-sized regions, kernel-level hugepage management
+alone may still face fragmentation and memory bloat.
+
+Overall, prior work shows that huge pages can improve performance but also
+introduce fragmentation and memory-efficiency problems. Temeraire's specific
+contribution is to treat hugepage coverage as a first-class objective inside a
+production allocator backend. It tries to combine the performance benefit of
+huge pages with controlled memory overhead by packing some hugepages densely
+and making others empty enough to return to the operating system.
 
 \section{Original Evaluation Methodology}
 
