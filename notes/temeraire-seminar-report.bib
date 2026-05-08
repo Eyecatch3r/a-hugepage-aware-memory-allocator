@@ -9,3 +9,85 @@
   publisher = {{USENIX} Association},
   month = jul
 }
+
+@inproceedings{10.1145/2754169.2754178,
+author = {Kuszmaul, Bradley C.},
+title = {SuperMalloc: a super fast multithreaded malloc for 64-bit machines},
+year = {2015},
+isbn = {9781450335898},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/2754169.2754178},
+doi = {10.1145/2754169.2754178},
+abstract = {SuperMalloc is an implementation of malloc(3) originally designed for X86 Hardware Transactional Memory (HTM)@. It turns out that the same design decisions also make it fast even without HTM@. For the malloc-test benchmark, which is one of the most difficult workloads for an allocator, with one thread SuperMalloc is about 2.1 times faster than the best of DLmalloc, JEmalloc, Hoard, and TBBmalloc; with 8 threads and HTM, SuperMalloc is 2.75 times faster; and on 32 threads without HTM SuperMalloc is 3.4 times faster. SuperMalloc generally compares favorably with the other allocators on speed, scalability, speed variance, memory footprint, and code size. SuperMalloc achieves these performance advantages using less than half as much code as the alternatives. SuperMalloc exploits the fact that although physical memory is always precious, virtual address space on a 64-bit machine is relatively cheap. It allocates 2 chunks which contain objects all the same size. To translate chunk numbers to chunk metadata, SuperMalloc uses a simple array (most of which is uncommitted to physical memory). SuperMalloc takes care to avoid associativity conflicts in the cache: most of the size classes are a prime number of cache lines, and nonaligned huge accesses are randomly aligned within a page. Objects are allocated from the fullest non-full page in the appropriate size class. For each size class, SuperMalloc employs a 10-object per-thread cache, a per-CPU cache that holds about a level-2-cache worth of objects per size class, and a global cache that is organized to allow the movement of many objects between a per-CPU cache and the global cache using $O(1)$ instructions. SuperMalloc prefetches everything it can before starting a critical section, which makes the critical sections run fast, and for HTM improves the odds that the transaction will commit.},
+booktitle = {Proceedings of the 2015 International Symposium on Memory Management},
+pages = {41–55},
+numpages = {15},
+keywords = {malloc, Virtual Memory, Memory Allocation Library},
+location = {Portland, OR, USA},
+series = {ISMM '15}
+}
+
+
+
+@INPROCEEDINGS{8502619,
+  author={Jägemar, Marcus},
+  booktitle={2018 IEEE 23rd International Conference on Emerging Technologies and Factory Automation (ETFA)}, 
+  title={Mallocpool: Improving Memory Performance Through Contiguously TLB Mapped Memory}, 
+  year={2018},
+  volume={1},
+  number={},
+  pages={1127-1130},
+  keywords={Libraries;Memory management;Resource management;Linux;Task analysis;Standards;Strain},
+  doi={10.1109/ETFA.2018.8502619}}
+
+@inproceedings{10.1145/3373376.3378525,
+author = {Maas, Martin and Andersen, David G. and Isard, Michael and Javanmard, Mohammad Mahdi and McKinley, Kathryn S. and Raffel, Colin},
+title = {Learning-based Memory Allocation for C++ Server Workloads},
+year = {2020},
+isbn = {9781450371025},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3373376.3378525},
+doi = {10.1145/3373376.3378525},
+abstract = {Modern C++ servers have memory footprints that vary widely over time, causing persistent heap fragmentation of up to 2x from long-lived objects allocated during peak memory usage. This fragmentation is exacerbated by the use of huge (2MB) pages, a requirement for high performance on large heap sizes. Reducing fragmentation automatically is challenging because C++ memory managers cannot move objects.This paper presents a new approach to huge page fragmentation. It combines modern machine learning techniques with a novel memory manager (LLAMA) that manages the heap based on object lifetimes and huge pages (divided into blocks and lines). A neural network-based language model predicts lifetime classes using symbolized calling contexts. The model learns context-sensitive per-allocation site lifetimes from previous runs, generalizes over different binary versions, and extrapolates from samples to unobserved calling contexts. Instead of size classes, LLAMA's heap is organized by lifetime classes that are dynamically adjusted based on observed behavior at a block granularity.LLAMA reduces memory fragmentation by up to 78\% while only using huge pages on several production servers. We address ML-specific questions such as tolerating mispredictions and amortizing expensive predictions across application execution. Although our results focus on memory allocation, the questions we identify apply to other system-level problems with strict latency and resource requirements where machine learning could be applied.},
+booktitle = {Proceedings of the Twenty-Fifth International Conference on Architectural Support for Programming Languages and Operating Systems},
+pages = {541–556},
+numpages = {16},
+keywords = {lifetime prediction, lstms, machine learning, memory management, profile-guided optimization},
+location = {Lausanne, Switzerland},
+series = {ASPLOS '20}
+}
+
+@inproceedings{10.5555/3026877.3026931,
+author = {Kwon, Youngjin and Yu, Hangchen and Peter, Simon and Rossbach, Christopher J. and Witchel, Emmett},
+title = {Coordinated and efficient huge page management with ingens},
+year = {2016},
+isbn = {9781931971331},
+publisher = {USENIX Association},
+address = {USA},
+abstract = {Modern computing is hungry for RAM, with today's enormous capacities eagerly consumed by diverse workloads. Hardware address translation overheads have grown with memory capacity, motivating hardware manufacturers to provide TLBs with thousands of entries for large page sizes (called huge pages). Operating systems and hypervisors support huge pages with a hodge-podge of best-effort algorithms and spot fixes that made sense for architectures with limited huge page support, but the time has come for a more fundamental redesign.Ingens is a framework for huge page support that relies on a handful of basic primitives to provide transparent huge page support in a principled, coordinated way. By managing contiguity as a first-class resource and by tracking utilization and access frequency of memory pages, Ingens is able to eliminate a number of fairness and performance pathologies that plague current systems. Experiments with our prototype demonstrate fairness improvements, performance improvements (up to 18\%), tail-latency reduction (up to 41\%), and reduction of memory bloat from 69\% to less than 1\% for important applications like Web services (e.g., the Cloudstone benchmark) and the Redis key-value store.},
+booktitle = {Proceedings of the 12th USENIX Conference on Operating Systems Design and Implementation},
+pages = {705–721},
+numpages = {17},
+location = {Savannah, GA, USA},
+series = {OSDI'16}
+}
+
+@inproceedings{10.1145/3297858.3304064,
+author = {Panwar, Ashish and Bansal, Sorav and Gopinath, K.},
+title = {HawkEye: Efficient Fine-grained OS Support for Huge Pages},
+year = {2019},
+isbn = {9781450362405},
+publisher = {Association for Computing Machinery},
+address = {New York, NY, USA},
+url = {https://doi.org/10.1145/3297858.3304064},
+doi = {10.1145/3297858.3304064},
+abstract = {Effective huge page management in operating systems is necessary for mitigation of address translation overheads. However, this continues to remain a difficult area in OS design. Recent work on Ingens uncovered some interesting pitfalls in current huge page management strategies. Using both page access patterns discovered by the OS kernel and fine-grained data from hardware performance counters, we expose problematic aspects of current huge page management strategies. In our system, called HawkEye/Linux, we demonstrate alternate ways to address issues related to performance, page fault latency and memory bloat; the primary ideas behind HawkEye management algorithms are async page pre-zeroing, de-duplication of zero-filled pages, fine-grained page access tracking and measurement of address translation overheads through hardware performance counters. Our evaluation shows that HawkEye is more performant, robust and better-suited to handle diverse workloads when compared with current state-of-the-art systems.},
+booktitle = {Proceedings of the Twenty-Fourth International Conference on Architectural Support for Programming Languages and Operating Systems},
+pages = {347–360},
+numpages = {14},
+keywords = {hardware counters, huge pages, virtual memory},
+location = {Providence, RI, USA},
+series = {ASPLOS '19}
+}
