@@ -12,8 +12,14 @@ PORT="${BENCH_PORT:-6380}"
 REQUESTS_PER_TRIAL="${REDIS_REQUESTS_PER_TRIAL:-1000000}"
 CLIENTS="${REDIS_CLIENTS:-50}"
 PIPELINE="${REDIS_PIPELINE:-16}"
+RUN_LABEL="${RUN_LABEL:-}"
+NUMA_NODE="${REDIS_NUMA_NODE:-}"
 timestamp="$(date -u +"%Y%m%dT%H%M%SZ")"
-RUN_DIR="${RESULT_BASE}/${timestamp}-${ALLOCATOR}"
+run_suffix=""
+if [[ -n "${RUN_LABEL}" ]]; then
+  run_suffix="-${RUN_LABEL}"
+fi
+RUN_DIR="${RESULT_BASE}/${timestamp}-${ALLOCATOR}${run_suffix}"
 mkdir -p "${RUN_DIR}"
 
 if [[ ! -x "${REDIS_DIR}/redis-server" ]]; then
@@ -21,7 +27,12 @@ if [[ ! -x "${REDIS_DIR}/redis-server" ]]; then
   exit 1
 fi
 
-server_cmd=( "${REDIS_DIR}/redis-server" "--port" "${PORT}" "--save" "" "--appendonly" "no" )
+command_prefix=()
+if [[ -n "${NUMA_NODE}" ]]; then
+  command_prefix=( numactl "--cpunodebind=${NUMA_NODE}" "--membind=${NUMA_NODE}" )
+fi
+
+server_cmd=( "${command_prefix[@]}" "${REDIS_DIR}/redis-server" "--port" "${PORT}" "--save" "" "--appendonly" "no" )
 
 case "${ALLOCATOR}" in
   glibc)
@@ -84,13 +95,13 @@ perf stat \
 perf_pid=$!
 
 "${REDIS_DIR}/redis-cli" -p "${PORT}" flushall >/dev/null
-"${REDIS_DIR}/redis-benchmark" \
+"${command_prefix[@]}" "${REDIS_DIR}/redis-benchmark" \
   -p "${PORT}" \
   -n "${REQUESTS_PER_TRIAL}" \
   -c "${CLIENTS}" \
   -P "${PIPELINE}" \
   lpush benchmark:list v1 v2 v3 v4 v5 > "${RUN_DIR}/lpush.txt"
-"${REDIS_DIR}/redis-benchmark" \
+"${command_prefix[@]}" "${REDIS_DIR}/redis-benchmark" \
   -p "${PORT}" \
   -n "${REQUESTS_PER_TRIAL}" \
   -c "${CLIENTS}" \

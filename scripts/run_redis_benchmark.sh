@@ -13,8 +13,14 @@ TRIALS="${REDIS_TRIALS:-2000}"
 REQUESTS_PER_TRIAL="${REDIS_REQUESTS_PER_TRIAL:-1000000}"
 CLIENTS="${REDIS_CLIENTS:-50}"
 PIPELINE="${REDIS_PIPELINE:-16}"
+RUN_LABEL="${RUN_LABEL:-}"
+NUMA_NODE="${REDIS_NUMA_NODE:-}"
 timestamp="$(date -u +"%Y%m%dT%H%M%SZ")"
-RUN_DIR="${RESULT_BASE}/${timestamp}-${ALLOCATOR}"
+run_suffix=""
+if [[ -n "${RUN_LABEL}" ]]; then
+  run_suffix="-${RUN_LABEL}"
+fi
+RUN_DIR="${RESULT_BASE}/${timestamp}-${ALLOCATOR}${run_suffix}"
 mkdir -p "${RUN_DIR}"
 
 if [[ ! -x "${REDIS_DIR}/redis-server" ]]; then
@@ -22,7 +28,12 @@ if [[ ! -x "${REDIS_DIR}/redis-server" ]]; then
   exit 1
 fi
 
-server_cmd=( "${REDIS_DIR}/redis-server" "--port" "${PORT}" "--save" "" "--appendonly" "no" )
+command_prefix=()
+if [[ -n "${NUMA_NODE}" ]]; then
+  command_prefix=( numactl "--cpunodebind=${NUMA_NODE}" "--membind=${NUMA_NODE}" )
+fi
+
+server_cmd=( "${command_prefix[@]}" "${REDIS_DIR}/redis-server" "--port" "${PORT}" "--save" "" "--appendonly" "no" )
 
 allocator_mode_note=""
 case "${ALLOCATOR}" in
@@ -85,6 +96,7 @@ fi
 {
   echo "allocator=${ALLOCATOR}"
   echo "allocator_note=${allocator_mode_note}"
+  echo "run_label=${RUN_LABEL:-none}"
   echo "timestamp_utc=${timestamp}"
   echo "pid=${redis_pid}"
   echo "port=${PORT}"
@@ -92,6 +104,9 @@ fi
   echo "requests_per_trial=${REQUESTS_PER_TRIAL}"
   echo "clients=${CLIENTS}"
   echo "pipeline=${PIPELINE}"
+  echo "numa_node=${NUMA_NODE:-none}"
+  echo "background_release_enabled=${CODEX_TCMALLOC_ENABLE_BACKGROUND_RELEASE:-0}"
+  echo "background_release_rate_bps=${CODEX_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS:-default}"
   echo
   echo "## benchmark_methodology"
   echo "Each trial runs two redis-benchmark invocations:"
@@ -115,7 +130,7 @@ extract_rps() {
 for trial in $(seq 1 "${TRIALS}"); do
   "${REDIS_DIR}/redis-cli" -p "${PORT}" flushall >/dev/null
 
-  lpush_output="$("${REDIS_DIR}/redis-benchmark" \
+  lpush_output="$("${command_prefix[@]}" "${REDIS_DIR}/redis-benchmark" \
     -p "${PORT}" \
     -n "${REQUESTS_PER_TRIAL}" \
     -c "${CLIENTS}" \
@@ -126,7 +141,7 @@ for trial in $(seq 1 "${TRIALS}"); do
   printf "%s\n" "${lpush_output}" > "${RUN_DIR}/trial-$(printf '%04d' "${trial}")-lpush.csv"
   echo "${trial},lpush5,${REQUESTS_PER_TRIAL},${lpush_rps}" >> "${RESULTS_CSV}"
 
-  lrange_output="$("${REDIS_DIR}/redis-benchmark" \
+  lrange_output="$("${command_prefix[@]}" "${REDIS_DIR}/redis-benchmark" \
     -p "${PORT}" \
     -n "${REQUESTS_PER_TRIAL}" \
     -c "${CLIENTS}" \

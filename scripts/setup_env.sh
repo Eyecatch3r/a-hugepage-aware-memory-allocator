@@ -10,6 +10,12 @@ SRC_DIR="${THIRD_PARTY_DIR}/src"
 REDIS_VERSION="${REDIS_VERSION:-6.0.9}"
 GPERFTOOLS_REF="${GPERFTOOLS_REF:-gperftools-2.16}"
 GOOGLE_TCMALLOC_REF="${GOOGLE_TCMALLOC_REF:-8e534f50707469baac732559494559db95732e12}"
+REDIS_OPT_FLAGS="${REDIS_OPT_FLAGS:--O3}"
+GPERFTOOLS_CFLAGS="${GPERFTOOLS_CFLAGS:--O3}"
+GPERFTOOLS_CXXFLAGS="${GPERFTOOLS_CXXFLAGS:--O3}"
+BAZEL_COMPILATION_MODE="${BAZEL_COMPILATION_MODE:-opt}"
+BAZEL_COPT="${BAZEL_COPT:--O3}"
+BAZEL_CXXOPT="${BAZEL_CXXOPT:--O3}"
 
 mkdir -p "${BUILD_DIR}" "${INSTALL_DIR}" "${SRC_DIR}"
 
@@ -39,12 +45,13 @@ fi
 
 pushd "${SRC_DIR}/redis" >/dev/null
 make distclean >/dev/null 2>&1 || true
-make -j"$(nproc)" CC="${CC:-clang}" MALLOC=libc
+make -j"$(nproc)" CC="${CC:-clang}" MALLOC=libc OPT="${REDIS_OPT_FLAGS}"
 popd >/dev/null
 
 pushd "${SRC_DIR}/gperftools" >/dev/null
 autoreconf -fi
-./configure --prefix="${INSTALL_DIR}/gperftools"
+CFLAGS="${GPERFTOOLS_CFLAGS}" CXXFLAGS="${GPERFTOOLS_CXXFLAGS}" \
+  ./configure --prefix="${INSTALL_DIR}/gperftools"
 make -j"$(nproc)"
 make install
 popd >/dev/null
@@ -72,7 +79,12 @@ EOF
 fi
 
 pushd "${SRC_DIR}/google-tcmalloc" >/dev/null
-USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-4.2.2}" bazelisk build //tcmalloc/testing:codex_libtcmalloc_temeraire.so //tcmalloc/testing:codex_libtcmalloc_legacy.so
+USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-4.2.2}" bazelisk build \
+  -c "${BAZEL_COMPILATION_MODE}" \
+  --copt="${BAZEL_COPT}" \
+  --cxxopt="${BAZEL_CXXOPT}" \
+  //tcmalloc/testing:codex_libtcmalloc_temeraire.so \
+  //tcmalloc/testing:codex_libtcmalloc_legacy.so
 mkdir -p "${INSTALL_DIR}/google-tcmalloc/lib"
 cp -f bazel-bin/tcmalloc/testing/codex_libtcmalloc_temeraire.so "${INSTALL_DIR}/google-tcmalloc/lib/libtcmalloc_temeraire.so"
 cp -f bazel-bin/tcmalloc/testing/codex_libtcmalloc_legacy.so "${INSTALL_DIR}/google-tcmalloc/lib/libtcmalloc_legacy.so"

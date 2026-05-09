@@ -102,6 +102,31 @@ docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh
 docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
 ```
 
+### Paper-Closer Single-Machine Run
+
+This path aims to get closer to the Redis case study from the paper while still
+running on one machine with public code. It keeps the paper-shaped Redis
+benchmark defaults, records richer system metadata, and can optionally run both
+release-off and release-on configurations.
+
+```bash
+docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh"
+```
+
+Useful overrides:
+
+- `RUN_RELEASE_OFF=1` and `RUN_RELEASE_ON=1` control whether to run the two release modes.
+- `PAPER_NUMA_NODE=0` pins Redis and `redis-benchmark` to one NUMA node when supported.
+- `RUN_PERF=1` adds `perf stat` captures for each allocator mode.
+- `PAPER_BACKGROUND_RELEASE_RATE_BPS=<bytes_per_sec>` overrides the allocator background release rate for the release-on runs.
+
+Important caveats:
+
+- This still does **not** reproduce the paper's original execution environment.
+- The exact LLVM commit and exact Skylake hardware remain host-dependent deviations.
+- The public TCMalloc revision is an approximation chosen to preserve the legacy-vs-Temeraire comparison.
+
 ### Optional: Perf Counters
 
 ```bash

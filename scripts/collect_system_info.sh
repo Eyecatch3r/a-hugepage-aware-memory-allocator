@@ -21,12 +21,24 @@ outfile="${OUT_DIR}/${timestamp}.txt"
   echo "## cpuinfo model"
   grep -m1 "model name" /proc/cpuinfo || true
   echo
+  echo "## lscpu"
+  lscpu 2>/dev/null || true
+  echo
+  echo "## numa"
+  numactl --hardware 2>/dev/null || true
+  echo
   echo "## meminfo summary"
   grep -E "MemTotal|MemFree|MemAvailable|HugePages|AnonHugePages" /proc/meminfo || true
   echo
   echo "## transparent hugepages"
   cat /sys/kernel/mm/transparent_hugepage/enabled 2>/dev/null || true
   cat /sys/kernel/mm/transparent_hugepage/defrag 2>/dev/null || true
+  cat /sys/kernel/mm/transparent_hugepage/khugepaged/max_ptes_none 2>/dev/null || true
+  echo
+  echo "## compilers"
+  clang --version 2>/dev/null || true
+  echo
+  gcc --version 2>/dev/null || true
   echo
   echo "## redis version"
   "${ROOT_DIR}/third_party/src/redis/src/redis-server" --version 2>/dev/null || echo "redis not built yet"
