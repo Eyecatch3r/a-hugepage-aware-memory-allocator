@@ -50,8 +50,10 @@ The container runs with elevated privileges; `perf`, `/proc` inspection, and mem
 | Redis | `6.0.9` |
 | gperftools | `gperftools-2.16` |
 | google/tcmalloc | `8e534f50707469baac732559494559db95732e12` |
+| llvm/clang | `cd442157cf` (when `BUILD_EXACT_LLVM=1`) |
 
 The pinned `google/tcmalloc` commit is required: it exposes the `want_no_hpaa` hook needed to build the legacy pageheap variant alongside the Temeraire-capable variant.
+By default, the Docker configuration now also attempts to build a pinned LLVM/Clang toolchain so Redis and the TCMalloc wrapper can be compiled closer to the paper's stated setup.
 
 ## Allocator Modes
 
@@ -120,6 +122,7 @@ Useful overrides:
 - `PAPER_NUMA_NODE=0` pins Redis and `redis-benchmark` to one NUMA node when supported.
 - `RUN_PERF=1` adds `perf stat` captures for each allocator mode.
 - `PAPER_BACKGROUND_RELEASE_RATE_BPS=<bytes_per_sec>` overrides the allocator background release rate for the release-on runs.
+- `BUILD_EXACT_LLVM=1` builds a pinned LLVM/Clang toolchain from source. `LLVM_REF` and `LLVM_REPO_URL` can be overridden if the paper-era commit needs adjustment.
 
 Important caveats:
 

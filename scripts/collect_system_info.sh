@@ -40,6 +40,19 @@ outfile="${OUT_DIR}/${timestamp}.txt"
   echo
   gcc --version 2>/dev/null || true
   echo
+  echo "## exact llvm toolchain"
+  if [[ -x "${ROOT_DIR}/third_party/install/llvm/bin/clang" ]]; then
+    "${ROOT_DIR}/third_party/install/llvm/bin/clang" --version 2>/dev/null || true
+    echo
+    echo "llvm_repo_url=${LLVM_REPO_URL:-unknown}"
+    echo "llvm_ref_requested=${LLVM_REF:-unknown}"
+    if [[ -d "${ROOT_DIR}/third_party/src/llvm-project/.git" ]]; then
+      git -C "${ROOT_DIR}/third_party/src/llvm-project" rev-parse HEAD
+    fi
+  else
+    echo "exact llvm toolchain not built"
+  fi
+  echo
   echo "## redis version"
   "${ROOT_DIR}/third_party/src/redis/src/redis-server" --version 2>/dev/null || echo "redis not built yet"
   echo

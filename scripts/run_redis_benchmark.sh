@@ -107,6 +107,8 @@ fi
   echo "numa_node=${NUMA_NODE:-none}"
   echo "background_release_enabled=${CODEX_TCMALLOC_ENABLE_BACKGROUND_RELEASE:-0}"
   echo "background_release_rate_bps=${CODEX_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS:-default}"
+  echo "build_exact_llvm=${BUILD_EXACT_LLVM:-0}"
+  echo "llvm_ref_requested=${LLVM_REF:-unknown}"
   echo
   echo "## benchmark_methodology"
   echo "Each trial runs two redis-benchmark invocations:"

@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     jq \
     libtool \
+    libxml2-dev \
     linux-perf \
     ninja-build \
     numactl \
@@ -25,6 +26,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     redis-tools \
     sudo \
     tini \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace

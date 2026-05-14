@@ -137,6 +137,32 @@ It now:
 
 These libraries are copied into a stable install directory so that benchmark scripts can switch allocators through \texttt{LD\_PRELOAD}.
 
+\subsection{Exact LLVM Integration Attempt}
+
+The paper states that Redis and TCMalloc were compiled with LLVM commit
+\texttt{cd442157cf} using \texttt{-O3}. The repository initially did not try to
+match this: it simply relied on the container's packaged \texttt{clang}. To
+move closer to the paper, the setup script was extended with an optional exact
+LLVM path.
+
+When enabled, the script now:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item clones an LLVM repository at a configurable reference,
+  \item builds a local \texttt{clang}/\texttt{clang++} toolchain into
+  \texttt{third\_party/install/llvm},
+  \item uses that compiler explicitly for Redis, \texttt{gperftools}, and the
+  TCMalloc wrapper build,
+  \item records the resulting compiler version and pinned LLVM reference in the
+  collected system metadata.
+\end{itemize}
+
+This is an important methodological improvement, but it should be documented
+carefully: at the time of writing, this path has been integrated into the
+repository but not yet validated end-to-end with a fresh container rebuild.
+There is therefore still a distinction between ``implemented closer to the
+paper'' and ``empirically verified to rebuild cleanly.''
+
 \section{Benchmark Script Changes}
 
 The benchmark driver had to be reoriented toward the paper's Redis case study.
@@ -155,6 +181,26 @@ The new script behavior is:
 \end{itemize}
 
 The paper's exact surrounding environment cannot be reproduced, but this script now matches the experiment shape more closely than the original repository state.
+
+\subsection{Single-Machine Paper-Closer Orchestration}
+
+Beyond the original benchmark script, the repository now also includes a
+dedicated orchestration script for a ``paper-closer'' single-machine run. This
+script is intended to make the experiment easier to execute consistently when
+trying to match the Redis case study more closely.
+
+The orchestration path adds several controls that were previously missing:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item optional NUMA pinning through \texttt{numactl},
+  \item optional \texttt{perf} collection for the same allocator mode,
+  \item a run manifest that explicitly records known deviations from the paper,
+  \item separate release-mode runs so that ``release off'' and ``release on''
+  configurations can be documented distinctly.
+\end{itemize}
+
+This is valuable for a seminar artifact because it makes the difference between
+the \emph{paper-shaped workload} and the \emph{paper-shaped workflow} explicit.
 
 \section{Dead Ends and Failed Attempts}
 
@@ -178,6 +224,49 @@ Another obstacle was target visibility.
 The \texttt{want\_no\_hpaa} mechanism was not globally visible; it was restricted in a way that prevented arbitrary external linkage.
 The workaround was to place the wrapper target inside the \texttt{tcmalloc/testing} package, where the needed visibility was permitted.
 
+\subsection{Legacy Comparison Was Not the Default Shape}
+
+An earlier practical difficulty was conceptual rather than purely technical:
+the repository was capable of allocator experiments, but its main comparison
+axis was not the one used in the paper. This matters because systems artifacts
+often become harder to interpret when a repository supports many adjacent
+experiments at once. Part of the work was therefore not just adding code, but
+removing ambiguity about which allocator comparison is actually paper-aligned.
+
+\subsection{Exact Compiler Matching Is More Expensive Than It First Appears}
+
+It is easy to underestimate the cost of matching a paper's compiler statement.
+In this case, ``use LLVM commit \texttt{cd442157cf}'' sounds small, but in
+practice it implies:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item identifying the correct upstream repository layout for that historical
+  commit,
+  \item installing additional build dependencies into the container,
+  \item compiling a local \texttt{clang} toolchain before the real experiment
+  can even start,
+  \item passing that compiler through three different build systems:
+  Redis \texttt{make}, \texttt{gperftools} \texttt{configure}/\texttt{make},
+  and Bazel for the TCMalloc wrapper.
+\end{itemize}
+
+This does not make the approach infeasible, but it does make it one of the
+largest setup-cost increases in the repository.
+
+\subsection{Wrapper Symbols Did Not Match the Historical TCMalloc Revision}
+
+During a later container validation run, the allocator preload check failed
+even though the shared objects had been built successfully. The immediate cause
+was that the small wrapper library referenced background-release methods on
+\texttt{tcmalloc::MallocExtension} that do not exist in the pinned historical
+public TCMalloc revision. As a result, the preloaded allocator library failed
+to load before Redis even started.
+
+The practical fix was to make those wrapper calls optional by resolving the
+symbols dynamically at runtime. This preserved the wrapper's intended behavior
+for newer revisions that provide the methods, while allowing the historical
+paper-era approximation to load cleanly when those methods are absent.
+
 \subsection{Why the Final Approach Worked}
 
 The successful strategy was therefore:
@@ -186,8 +275,41 @@ The successful strategy was therefore:
   \item use a historical public commit that still exposes legacy-versus-Temeraire behavior,
   \item add a small wrapper source file directly into the cloned TCMalloc tree,
   \item add Bazel targets in a package where the required visibility is valid,
-  \item produce two small shared libraries that can be switched with \texttt{LD\_PRELOAD}.
+  \item produce two small shared libraries that can be switched with \texttt{LD\_PRELOAD},
+  \item and push paper-specific knobs such as compiler choice, release mode,
+  and NUMA placement into explicit script parameters instead of leaving them as
+  undocumented ambient state.
 \end{itemize}
+
+\section{What Worked Surprisingly Well}
+
+Not every part of the adaptation was difficult. Several parts worked better
+than expected and are worth documenting because they strengthen confidence in
+the artifact design.
+
+\subsection{Allocator Switching by \texttt{LD\_PRELOAD}}
+
+Once the two shared libraries were built, allocator switching itself turned out
+to be straightforward. The benchmark harness could keep a single Redis build and
+select the allocator mode externally with \texttt{LD\_PRELOAD}. This greatly
+reduced the amount of per-mode rebuild logic required.
+
+\subsection{The Historical TCMalloc Commit Was Sufficiently Usable}
+
+The chosen historical public TCMalloc revision did not merely contain
+\texttt{want\_no\_hpaa}; it was also practical enough to support the
+legacy-versus-Temeraire split without a deep fork of allocator internals. That
+was an important positive surprise because it kept the repository from turning
+into a TCMalloc maintenance branch.
+
+\subsection{Metadata Collection Fit the Artifact Model Well}
+
+Collecting system metadata, allocator preload evidence, and raw benchmark
+outputs fit naturally into the repository structure. In other words, once the
+repository was already writing timestamped result directories, it was easy to
+add more context such as THP settings, NUMA information, and compiler version
+records. This is useful because reproducibility problems in systems experiments
+often come less from one wrong command than from one unrecorded assumption.
 
 \section{Verification Steps}
 
@@ -231,6 +353,27 @@ This showed that:
 This matters because Redis may still report \texttt{mem\_allocator: libc} from its own build metadata, even though the process allocator has been changed at runtime via \texttt{LD\_PRELOAD}.
 The preload verification therefore provides stronger evidence that the allocator switch is real.
 
+\subsection{Script Validation}
+
+After the later harness extensions, the modified shell scripts were at least
+validated syntactically with \texttt{bash -n}. This is weaker than a full
+container rebuild, but it is still worth documenting because the repository now
+contains more branching behavior than before: exact LLVM builds, NUMA pinning,
+release-mode toggles, and paper-closer orchestration.
+
+\subsection{What Is Still Unverified}
+
+At the time this note was last updated, one important boundary remained:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item the original Redis-vs.-Temeraire smoke-test path had already been run,
+  \item but the newer exact-LLVM and paper-closer orchestration path had not
+  yet been exercised from a fresh container rebuild.
+\end{itemize}
+
+This distinction should be preserved in later seminar reporting. An implemented
+setup improvement is not the same thing as a verified setup improvement.
+
 \section{Current Final State}
 
 In its current state, the repository now supports a more faithful small-scale approximation of the paper's Redis case study:
@@ -241,7 +384,11 @@ In its current state, the repository now supports a more faithful small-scale ap
   \item legacy and Temeraire allocator variants built as shared objects,
   \item benchmark script aligned to the push-five/read-five workload shape,
   \item Docker defaults prepared for repeated trials,
-  \item runtime verification added to ensure the chosen allocator is truly loaded.
+  \item runtime verification added to ensure the chosen allocator is truly loaded,
+  \item richer metadata collection for CPU, NUMA, THP, and compiler details,
+  \item optional exact-LLVM integration toward the paper's stated compiler
+  setup,
+  \item and a paper-closer orchestration path for a single-machine experiment.
 \end{itemize}
 
 This is likely sufficient for a seminar artifact that aims to be methodologically close to the Redis experiment, provided the report clearly states what remains outside the scope of reproduction.
@@ -255,7 +402,9 @@ The following limitations still apply and should be stated explicitly in seminar
   \item the fleet-scale and rollout sections of the paper are not reproduced,
   \item the exact compiler, kernel, and machine topology from the paper are only approximated,
   \item containerization may itself affect allocator and hugepage behavior,
-  \item the public TCMalloc source is only a historical approximation of the paper artifact, not a guaranteed byte-identical reproduction of the internal setup.
+  \item the public TCMalloc source is only a historical approximation of the paper artifact, not a guaranteed byte-identical reproduction of the internal setup,
+  \item and even the exact-LLVM integration only reduces one class of deviation;
+  it does not remove the hardware and operating-system mismatch.
 \end{itemize}
 
 These limitations do not invalidate the artifact, but they define its proper claim: it is a careful public reproduction attempt of the Redis case-study portion of the paper.

@@ -20,6 +20,9 @@ services:
       REDIS_VERSION: 6.0.9
       GPERFTOOLS_REF: gperftools-2.16
       GOOGLE_TCMALLOC_REF: 8e534f50707469baac732559494559db95732e12
+      LLVM_REPO_URL: https://github.com/llvm/llvm-project.git
+      LLVM_REF: cd442157cf
+      BUILD_EXACT_LLVM: 1
       BENCH_PORT: 6380
       REDIS_TRIALS: 2000
       REDIS_REQUESTS_PER_TRIAL: 1000000

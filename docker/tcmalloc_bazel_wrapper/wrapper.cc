@@ -1,11 +1,13 @@
 #include <stdlib.h>
 
 #include <cstring>
+#include <dlfcn.h>
 #include <thread>
 
-#include "tcmalloc/malloc_extension.h"
-
 namespace {
+
+using ProcessBackgroundActionsFn = void (*)();
+using SetBackgroundReleaseRateFn = void (*)(size_t);
 
 bool env_enabled(const char* name) {
   const char* value = std::getenv(name);
@@ -20,13 +22,27 @@ void maybe_start_background_release() {
   const char* rate = std::getenv("CODEX_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS");
   if (rate != nullptr && rate[0] != '\0') {
     size_t bytes_per_second = std::strtoull(rate, nullptr, 10);
-    tcmalloc::MallocExtension::SetBackgroundReleaseRate(
-        static_cast<tcmalloc::MallocExtension::BytesPerSecond>(
-            bytes_per_second));
+    void* rate_symbol = dlsym(
+        RTLD_DEFAULT,
+        "_ZN8tcmalloc15MallocExtension24SetBackgroundReleaseRateENS0_14BytesPerSecondE");
+    if (rate_symbol != nullptr) {
+      auto set_background_release_rate =
+          reinterpret_cast<SetBackgroundReleaseRateFn>(rate_symbol);
+      set_background_release_rate(bytes_per_second);
+    }
   }
 
-  std::thread([]() { tcmalloc::MallocExtension::ProcessBackgroundActions(); })
-      .detach();
+  // This symbol is not present in every public tcmalloc revision we benchmark.
+  void* symbol = dlsym(
+      RTLD_DEFAULT,
+      "_ZN8tcmalloc15MallocExtension24ProcessBackgroundActionsEv");
+  if (symbol == nullptr) return;
+
+  auto process_background_actions =
+      reinterpret_cast<ProcessBackgroundActionsFn>(symbol);
+  std::thread([process_background_actions]() {
+    process_background_actions();
+  }).detach();
 }
 
 struct CodexWrapperInit {
