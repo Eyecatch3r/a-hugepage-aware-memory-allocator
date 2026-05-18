@@ -50,7 +50,7 @@ The container runs with elevated privileges; `perf`, `/proc` inspection, and mem
 | Redis | `6.0.9` |
 | gperftools | `gperftools-2.16` |
 | google/tcmalloc | `8e534f50707469baac732559494559db95732e12` |
-| llvm/clang | `cd442157cf` (when `BUILD_EXACT_LLVM=1`) |
+| llvm/clang | `cd442157cff4aad209ae532cbf031abbe10bc1df` (when `BUILD_EXACT_LLVM=1`) |
 
 The pinned `google/tcmalloc` commit is required: it exposes the `want_no_hpaa` hook needed to build the legacy pageheap variant alongside the Temeraire-capable variant.
 By default, the Docker configuration now also attempts to build a pinned LLVM/Clang toolchain so Redis and the TCMalloc wrapper can be compiled closer to the paper's stated setup.

@@ -11,7 +11,7 @@ REDIS_VERSION="${REDIS_VERSION:-6.0.9}"
 GPERFTOOLS_REF="${GPERFTOOLS_REF:-gperftools-2.16}"
 GOOGLE_TCMALLOC_REF="${GOOGLE_TCMALLOC_REF:-8e534f50707469baac732559494559db95732e12}"
 LLVM_REPO_URL="${LLVM_REPO_URL:-https://github.com/llvm/llvm-project.git}"
-LLVM_REF="${LLVM_REF:-cd442157cf}"
+LLVM_REF="${LLVM_REF:-cd442157cff4aad209ae532cbf031abbe10bc1df}"
 BUILD_EXACT_LLVM="${BUILD_EXACT_LLVM:-0}"
 REDIS_OPT_FLAGS="${REDIS_OPT_FLAGS:--O3}"
 GPERFTOOLS_CFLAGS="${GPERFTOOLS_CFLAGS:--O3}"
@@ -25,13 +25,30 @@ LLVM_PROJECTS="${LLVM_PROJECTS:-clang}"
 
 mkdir -p "${BUILD_DIR}" "${INSTALL_DIR}" "${SRC_DIR}"
 
+is_commit_ref() {
+  local ref="$1"
+  [[ "${ref}" =~ ^[0-9a-f]{7,40}$ ]]
+}
+
 sync_repo() {
   local url="$1"
   local ref="$2"
   local dir="$3"
 
   if [[ ! -d "${dir}/.git" ]]; then
-    git clone --branch "${ref}" --depth 1 "${url}" "${dir}"
+    if is_commit_ref "${ref}"; then
+      # A raw commit hash cannot be cloned via --branch, so fetch history first
+      # and resolve the commit locally.
+      git clone --filter=blob:none --no-checkout "${url}" "${dir}"
+    else
+      git clone --branch "${ref}" --depth 1 "${url}" "${dir}"
+      return
+    fi
+  fi
+
+  if is_commit_ref "${ref}"; then
+    git -C "${dir}" fetch --filter=blob:none origin
+    git -C "${dir}" checkout --force "${ref}"
     return
   fi
 
