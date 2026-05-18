@@ -90,6 +90,7 @@ done
 
 if ! "${REDIS_DIR}/redis-cli" -p "${PORT}" ping >/dev/null 2>&1; then
   echo "Redis did not start successfully." >&2
+  cat "${RUN_DIR}/redis-server.log" >&2 || true
   exit 1
 fi
 

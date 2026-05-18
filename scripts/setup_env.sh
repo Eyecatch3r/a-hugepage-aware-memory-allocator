@@ -22,6 +22,7 @@ BAZEL_CXXOPT="${BAZEL_CXXOPT:--O3}"
 LLVM_CMAKE_BUILD_TYPE="${LLVM_CMAKE_BUILD_TYPE:-Release}"
 LLVM_TARGETS_TO_BUILD="${LLVM_TARGETS_TO_BUILD:-X86}"
 LLVM_PROJECTS="${LLVM_PROJECTS:-clang}"
+LLVM_SUPPRESS_DEV_WARNINGS="${LLVM_SUPPRESS_DEV_WARNINGS:-1}"
 
 mkdir -p "${BUILD_DIR}" "${INSTALL_DIR}" "${SRC_DIR}"
 
@@ -72,24 +73,38 @@ if [[ "${BUILD_EXACT_LLVM}" == "1" ]]; then
   fi
 
   llvm_build_dir="${BUILD_DIR}/llvm-project"
-  llvm_install_dir="${INSTALL_DIR}/llvm"
   rm -rf "${llvm_build_dir}"
-  mkdir -p "${llvm_build_dir}" "${llvm_install_dir}"
+  mkdir -p "${llvm_build_dir}"
 
-  cmake -S "${llvm_src_dir}" -B "${llvm_build_dir}" -G Ninja \
-    -DCMAKE_BUILD_TYPE="${LLVM_CMAKE_BUILD_TYPE}" \
-    -DCMAKE_INSTALL_PREFIX="${llvm_install_dir}" \
-    -DLLVM_ENABLE_PROJECTS="${LLVM_PROJECTS}" \
-    -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS_TO_BUILD}" \
-    -DLLVM_INCLUDE_TESTS=OFF \
-    -DLLVM_INCLUDE_BENCHMARKS=OFF \
-    -DLLVM_INCLUDE_EXAMPLES=OFF \
+  cmake_args=(
+    -S "${llvm_src_dir}"
+    -B "${llvm_build_dir}"
+    -G Ninja
+    -DCMAKE_BUILD_TYPE="${LLVM_CMAKE_BUILD_TYPE}"
+    -DLLVM_ENABLE_PROJECTS="${LLVM_PROJECTS}"
+    -DLLVM_TARGETS_TO_BUILD="${LLVM_TARGETS_TO_BUILD}"
+    -DLLVM_INCLUDE_TESTS=OFF
+    -DLLVM_INCLUDE_BENCHMARKS=OFF
+    -DLLVM_INCLUDE_EXAMPLES=OFF
     -DLLVM_INCLUDE_DOCS=OFF
-  cmake --build "${llvm_build_dir}" --target clang llvm-ar llvm-ranlib --parallel "$(nproc)"
-  cmake --install "${llvm_build_dir}" --component clang || cmake --install "${llvm_build_dir}"
+  )
+  if [[ "${LLVM_SUPPRESS_DEV_WARNINGS}" == "1" ]]; then
+    cmake_args+=( -Wno-dev )
+  fi
 
-  LLVM_CC="${llvm_install_dir}/bin/clang"
-  LLVM_CXX="${llvm_install_dir}/bin/clang++"
+  cmake "${cmake_args[@]}"
+  cmake --build "${llvm_build_dir}" --target clang llvm-ar llvm-ranlib --parallel "$(nproc)"
+
+  # Use the freshly built compiler from the build tree. Installing a partial
+  # LLVM build is fragile because CMake expects artifacts for unbuilt targets.
+  LLVM_CC="${llvm_build_dir}/bin/clang"
+  LLVM_CXX="${llvm_build_dir}/bin/clang++"
+
+  if ! printf '#include <stddef.h>\n' | "${LLVM_CC}" -E - >/dev/null 2>&1; then
+    echo "Built LLVM toolchain cannot find standard headers." >&2
+    echo "Expected a usable clang at ${LLVM_CC}, but preprocessing <stddef.h> failed." >&2
+    exit 1
+  fi
 fi
 
 if ! command -v bazelisk >/dev/null 2>&1; then
@@ -155,6 +170,6 @@ echo "Redis source: ${SRC_DIR}/redis"
 echo "gperftools install: ${INSTALL_DIR}/gperftools"
 echo "google tcmalloc install: ${INSTALL_DIR}/google-tcmalloc"
 if [[ "${BUILD_EXACT_LLVM}" == "1" ]]; then
-  echo "llvm install: ${INSTALL_DIR}/llvm"
+  echo "llvm build dir: ${BUILD_DIR}/llvm-project"
   "${LLVM_CC}" --version || true
 fi
