@@ -82,9 +82,9 @@ Any deviation from these defaults must be recorded in the report.
 
 ## Usage
 
-### Smoke Test
+### Trial Test Run
 
-Run this first to verify the build and both allocator paths before committing to a full run.
+It's preferred to run this first to verify the build and both allocator paths before committing to a full run.
 
 ```bash
 docker compose build
