@@ -137,7 +137,7 @@ It now:
 
 These libraries are copied into a stable install directory so that benchmark scripts can switch allocators through \texttt{LD\_PRELOAD}.
 
-\subsection{Exact LLVM Integration Attempt}
+\subsection{Exact LLVM Integration}
 
 The paper states that Redis and TCMalloc were compiled with LLVM commit
 \texttt{cd442157cf} using \texttt{-O3}. The repository initially did not try to
@@ -157,11 +157,19 @@ When enabled, the script now:
   collected system metadata.
 \end{itemize}
 
-This is an important methodological improvement, but it should be documented
-carefully: at the time of writing, this path has been integrated into the
-repository but not yet validated end-to-end with a fresh container rebuild.
-There is therefore still a distinction between ``implemented closer to the
-paper'' and ``empirically verified to rebuild cleanly.''
+This is an important methodological improvement, and it is no longer only
+theoretical. In the later paper-closer rerun, the collected system metadata
+shows that Redis and the allocator wrapper were in fact built with a locally
+built LLVM 13.0.0 toolchain from commit
+\texttt{cd442157cff4aad209ae532cbf031abbe10bc1df}. In other words, the
+repository now supports not only the paper-shaped workload but also a
+paper-closer compiler path that has been exercised successfully end to end.
+
+One minor inconsistency remains worth recording: the paper-closer manifest still
+marks \texttt{exact\_llvm\_commit\_cd442157cf=no}, even though the associated
+system-information file confirms that the exact LLVM path was used in that run.
+The methodology should therefore trust the collected compiler metadata over the
+older manifest flag.
 
 \section{Benchmark Script Changes}
 
@@ -361,18 +369,20 @@ container rebuild, but it is still worth documenting because the repository now
 contains more branching behavior than before: exact LLVM builds, NUMA pinning,
 release-mode toggles, and paper-closer orchestration.
 
-\subsection{What Is Still Unverified}
+\subsection{Paper-Closer End-to-End Runs}
 
-At the time this note was last updated, one important boundary remained:
+That later orchestration path was also exercised end to end. The repository now
+contains complete raw result directories for:
 
 \begin{itemize}[leftmargin=1.5em]
-  \item the original Redis-vs.-Temeraire smoke-test path had already been run,
-  \item but the newer exact-LLVM and paper-closer orchestration path had not
-  yet been exercised from a fresh container rebuild.
+  \item a plain 2000-trial \texttt{legacy} run and a matching
+  \texttt{temeraire} run,
+  \item a paper-closer \texttt{release off} pair,
+  \item and a paper-closer \texttt{release on} pair.
 \end{itemize}
 
-This distinction should be preserved in later seminar reporting. An implemented
-setup improvement is not the same thing as a verified setup improvement.
+This means the key artifact paths are now verified by actual benchmark output
+rather than only by static script inspection.
 
 \section{Current Final State}
 
@@ -386,12 +396,122 @@ In its current state, the repository now supports a more faithful small-scale ap
   \item Docker defaults prepared for repeated trials,
   \item runtime verification added to ensure the chosen allocator is truly loaded,
   \item richer metadata collection for CPU, NUMA, THP, and compiler details,
-  \item optional exact-LLVM integration toward the paper's stated compiler
-  setup,
+  \item per-run THP-state capture before and after Redis benchmark runs, plus
+  periodic \texttt{smaps\_rollup} snapshots during long runs,
+  \item exact-LLVM integration toward the paper's stated compiler setup, now
+  exercised in a completed paper-closer rerun,
   \item and a paper-closer orchestration path for a single-machine experiment.
 \end{itemize}
 
 This is likely sufficient for a seminar artifact that aims to be methodologically close to the Redis experiment, provided the report clearly states what remains outside the scope of reproduction.
+
+\section{Noteworthy Results}
+
+The completed runs are worth documenting here because they affect how the
+artifact should be interpreted.
+
+\subsection{Result Pattern Across Run Families}
+
+The result pattern is best understood in two phases.
+
+First, earlier paper-closer runs were completed while the shared WSL2 kernel
+still exposed Transparent Huge Pages in \texttt{madvise} mode. Those runs were
+useful for debugging the workflow, but their process summaries showed
+\texttt{AnonHugePages: 0 kB}, so they did not provide strong evidence that the
+paper's hugepage mechanism had actually been exercised.
+
+Second, a later four-run paper-closer rerun was performed after explicitly
+switching the shared WSL2/Docker THP policy to \texttt{always}. That rerun is
+the important one for the final interpretation.
+
+The run families are therefore:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item an earlier plain legacy-versus-Temeraire comparison,
+  \item an earlier paper-closer pair in \texttt{madvise}-mode conditions,
+  \item and a final THP-enabled paper-closer pair with periodic release
+  disabled plus a matching pair with periodic release enabled.
+\end{itemize}
+
+Using a combined push-plus-read throughput metric, the observed Temeraire
+change versus legacy in the final THP-enabled rerun was:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item about \texttt{+1.88\%} in the paper-closer release-off run,
+  \item and about \texttt{+0.26\%} in the paper-closer release-on run.
+\end{itemize}
+
+For context, the earlier local runs had produced much less credible values from
+the perspective of the paper comparison: about \texttt{+5.76\%} for release-off
+and about \texttt{-0.01\%} for release-on. Once THP backing was actually
+present, the observed Temeraire effect became smaller and moved closer to the
+paper's own reported range.
+
+\subsection{Comparison With the Paper}
+
+Hunter et al. report two Redis rows in Table~1: \texttt{Redis$\dagger$}
+(\textit{periodic release off}) at \texttt{+0.75\%} and \texttt{Redis}
+(\textit{periodic release on}) at \texttt{+0.44\%}. The local release-on result
+at \texttt{+0.26\%} is now close to the paper's small positive effect. The
+local release-off result at \texttt{+1.88\%} is still somewhat larger than the
+paper's \texttt{+0.75\%}, but it is much closer than the earlier local
+\texttt{madvise}-mode result was.
+
+\subsection{Hugepage Mechanism Was Recovered in the Final Rerun}
+
+The most important methodological improvement is that the final rerun did
+exercise hugepage-backed anonymous memory. The new periodic
+\texttt{memory-sample-XXXX.txt} snapshots and the final
+\texttt{memory-after.txt} files show non-zero \texttt{AnonHugePages} during and
+after every completed run.
+
+In the final THP-enabled rerun, the end-state \texttt{AnonHugePages} values
+were roughly:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{18 MiB} for legacy release-off,
+  \item \texttt{14 MiB} for Temeraire release-off,
+  \item \texttt{14 MiB} for legacy release-on,
+  \item \texttt{20 MiB} for Temeraire release-on.
+\end{itemize}
+
+This does not mean the paper's exact hugepage-coverage numbers were reproduced.
+The host still ran under WSL2 on an Intel Core i7-10700K rather than on the
+paper's Intel Skylake Xeon servers, so the kernel and platform behavior remain
+different. But it does mean that the final local comparison is now about the
+same qualitative mechanism as the paper, rather than about a benchmark that
+never obtained hugepage backing at all.
+
+\subsection{Instrumentation Added After the Hugepage Hiccup}
+
+The first completed runs revealed a methodological blind spot. The harness
+recorded process memory state only before and after the full Redis benchmark.
+When those snapshots showed \texttt{AnonHugePages: 0 kB}, there were two
+possible interpretations:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item hugepages were never used at all,
+  \item or hugepages were used transiently during the run but were absent by
+  the time the final snapshot was collected.
+\end{itemize}
+
+To reduce that ambiguity in future reruns, the benchmark harness was extended
+after these results were collected. It now writes:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \texttt{thp-before.txt} and \texttt{thp-after.txt} for each benchmark
+  run,
+  \item a richer end-state \texttt{memory-after.txt},
+  \item and periodic \texttt{memory-sample-XXXX.txt} snapshots during the
+  benchmark, with the interval configurable through
+  \texttt{REDIS\_SNAPSHOT\_EVERY\_TRIALS} or
+  \texttt{PAPER\_SNAPSHOT\_EVERY\_TRIALS}.
+\end{itemize}
+
+This change did not retroactively fix the already collected runs, but it did
+make the next rerun much better suited to answer the narrower question: whether
+Temeraire ever obtained hugepage-backed anonymous memory on this host during
+the benchmark itself. The answer from the later THP-enabled rerun is now yes.
 
 \section{Remaining Limitations}
 
@@ -403,8 +523,11 @@ The following limitations still apply and should be stated explicitly in seminar
   \item the exact compiler, kernel, and machine topology from the paper are only approximated,
   \item containerization may itself affect allocator and hugepage behavior,
   \item the public TCMalloc source is only a historical approximation of the paper artifact, not a guaranteed byte-identical reproduction of the internal setup,
-  \item and even the exact-LLVM integration only reduces one class of deviation;
-  it does not remove the hardware and operating-system mismatch.
+  \item exact-LLVM matching only reduces one class of deviation; it does not
+  remove the hardware and operating-system mismatch,
+  \item and although the final rerun did show hugepage-backed anonymous memory,
+  the exact hugepage coverage, physical fragmentation state, and host-kernel
+  behavior still differ from the paper's environment.
 \end{itemize}
 
 These limitations do not invalidate the artifact, but they define its proper claim: it is a careful public reproduction attempt of the Redis case-study portion of the paper.
@@ -425,6 +548,14 @@ The following command sequence captures the final working workflow:
 docker compose build
 docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
 docker compose run --rm temeraire-dev bash -lc "./scripts/check_allocator_preload.sh"
+docker compose run --rm temeraire-dev bash -lc "echo always > /sys/kernel/mm/transparent_hugepage/enabled && echo always > /sys/kernel/mm/transparent_hugepage/defrag"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh"
+\end{lstlisting}
+
+The older direct benchmark path remains available for supplementary runs:
+
+\begin{lstlisting}[style=codestyle]
+docker compose run --rm temeraire-dev bash -lc "./scripts/collect_system_info.sh"
 docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh legacy"
 docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
 \end{lstlisting}

@@ -82,39 +82,35 @@ Any deviation from these defaults must be recorded in the report.
 
 ## Usage
 
-### Trial Test Run
+### Recommended Reproduction Path
 
-It's preferred to run this first to verify the build and both allocator paths before committing to a full run.
+This is the primary workflow for the seminar reproduction. It is the closest
+supported path in this repository to the Redis case study described in the
+paper, and it should be the default command sequence for the main reproduction.
 
 ```bash
 docker compose build
 docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
 docker compose run --rm temeraire-dev bash -lc "./scripts/check_allocator_preload.sh"
-docker compose run --rm -e REDIS_TRIALS=2 -e REDIS_REQUESTS_PER_TRIAL=1000 temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh legacy"
-docker compose run --rm -e REDIS_TRIALS=2 -e REDIS_REQUESTS_PER_TRIAL=1000 temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
-```
-
-The preload check must show `libtcmalloc_legacy.so` for `legacy` and `libtcmalloc_temeraire.so` for `temeraire` in `/proc/<pid>/maps`. Do not compare smoke-test results against the paper; reduced parameters are for build validation only.
-
-### Full Experiment
-
-```bash
-docker compose run --rm temeraire-dev bash -lc "./scripts/collect_system_info.sh"
-docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh legacy"
-docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
-```
-
-### Paper-Closer Single-Machine Run
-
-This path aims to get closer to the Redis case study from the paper while still
-running on one machine with public code. It keeps the paper-shaped Redis
-benchmark defaults, records richer system metadata, and can optionally run both
-release-off and release-on configurations.
-
-```bash
-docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
+docker compose run --rm temeraire-dev bash -lc "echo always > /sys/kernel/mm/transparent_hugepage/enabled && echo always > /sys/kernel/mm/transparent_hugepage/defrag && cat /sys/kernel/mm/transparent_hugepage/enabled && cat /sys/kernel/mm/transparent_hugepage/defrag"
 docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh"
 ```
+
+Why this is the central path:
+
+- it uses the paper-shaped Redis benchmark defaults
+- it records richer system metadata than the older direct benchmark flow
+- it can run both release-off and release-on configurations
+- it now captures THP state and periodic `smaps_rollup` snapshots during the long run
+
+The preload check must show `libtcmalloc_legacy.so` for `legacy` and
+`libtcmalloc_temeraire.so` for `temeraire` in `/proc/<pid>/maps`.
+
+Important caveats:
+
+- THP comes from the shared Linux kernel used by Docker/WSL2, not from the image.
+- The `echo always > /sys/...` step changes kernel policy for the Docker/WSL Linux environment, not just one container.
+- If you skip that step, the run may remain in `madvise` mode and may fail to exercise the hugepage mechanism the paper studies.
 
 Useful overrides:
 
@@ -124,11 +120,36 @@ Useful overrides:
 - `PAPER_BACKGROUND_RELEASE_RATE_BPS=<bytes_per_sec>` overrides the allocator background release rate for the release-on runs.
 - `BUILD_EXACT_LLVM=1` builds a pinned LLVM/Clang toolchain from source. `LLVM_REF` and `LLVM_REPO_URL` can be overridden if the paper-era commit needs adjustment.
 
-Important caveats:
+### Trial Test Run
 
-- This still does **not** reproduce the paper's original execution environment.
-- The exact LLVM commit and exact Skylake hardware remain host-dependent deviations.
-- The public TCMalloc revision is an approximation chosen to preserve the legacy-vs-Temeraire comparison.
+Use this only as a smoke test before the main reproduction path.
+
+```bash
+docker compose build
+docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/check_allocator_preload.sh"
+docker compose run --rm -e REDIS_TRIALS=2 -e REDIS_REQUESTS_PER_TRIAL=1000 temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh legacy"
+docker compose run --rm -e REDIS_TRIALS=2 -e REDIS_REQUESTS_PER_TRIAL=1000 temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
+```
+
+Do not compare smoke-test results against the paper; reduced parameters are for build validation only.
+
+### Secondary: Direct Legacy-vs-Temeraire Run
+
+This is the older direct benchmark path. It remains useful for debugging,
+sanity-checking allocator selection, or collecting supplementary local data, but
+it is no longer the preferred headline workflow for the report.
+
+```bash
+docker compose run --rm temeraire-dev bash -lc "./scripts/collect_system_info.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh legacy"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
+```
+
+This still does **not** reproduce the paper's original execution environment.
+The exact LLVM commit, THP behavior, and hardware platform remain
+host-dependent deviations. The public TCMalloc revision is an approximation
+chosen to preserve the legacy-vs-Temeraire comparison.
 
 ### Optional: Perf Counters
 

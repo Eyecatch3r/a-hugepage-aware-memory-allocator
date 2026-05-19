@@ -654,6 +654,14 @@ docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh
 docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh temeraire"
 \end{lstlisting}
 
+For the final paper comparison, the repository also provides a
+paper-closer orchestration path:
+
+\begin{lstlisting}[style=commandstyle]
+docker compose run --rm temeraire-dev bash -lc "echo always > /sys/kernel/mm/transparent_hugepage/enabled && echo always > /sys/kernel/mm/transparent_hugepage/defrag"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh"
+\end{lstlisting}
+
 The benchmark script starts Redis, selects the allocator mode, records memory
 state, and executes repeated benchmark trials. Each trial first flushes the
 database and then performs two operations:
@@ -664,9 +672,15 @@ database and then performs two operations:
 \end{itemize}
 
 The default configuration follows the paper-shaped Redis workload: 2000 trials,
-1,000,000 requests per trial, 50 clients, and pipeline depth 16. A separate
-smoke-test mode can reduce trial and request counts to validate the environment
-quickly, but those smoke-test results must not be compared to the paper.
+1,000,000 requests per trial, 50 clients, and pipeline depth 16. The
+paper-closer script runs the same workload in two modes: periodic release off
+and periodic release on. This matters because Hunter et al. report two Redis
+rows in Table~1: \textit{Redis$\dagger$} for periodic release disabled and
+\textit{Redis} for periodic release enabled. The final comparison to the paper
+therefore uses the paper-closer runs rather than only the earlier plain
+legacy-versus-Temeraire pair. A separate smoke-test mode can reduce trial and
+request counts to validate the environment quickly, but those smoke-test
+results must not be compared to the paper.
 
 Reproducibility metadata is collected before the benchmark. This includes kernel
 version, operating-system release information, CPU model, memory summary,
@@ -674,6 +688,21 @@ Transparent Huge Page settings, Redis version, TCMalloc commit, and allocator
 artifacts. The allocator preload check is important because Redis may report
 \texttt{mem\_allocator: libc} even when the process allocator is actually
 changed through \texttt{LD\_PRELOAD}.
+
+In the later paper-closer rerun, the collected system metadata also shows that
+the exact LLVM path was exercised successfully: Redis and the allocator wrapper
+were compiled with a locally built LLVM 13.0.0 toolchain from commit
+\texttt{cd442157cff4aad209ae532cbf031abbe10bc1df}. This closes one important
+methodological gap relative to the paper, even though the host machine,
+hypervisor, and kernel behavior still differ from the original environment.
+
+One additional methodological issue became clear during the first paper-closer
+attempts: when the host stayed in Transparent Huge Pages \texttt{madvise} mode
+under WSL2, the recorded Redis process summaries showed no hugepage-backed
+anonymous memory. The final rerun therefore changed the shared WSL2/Docker THP
+policy to \texttt{always} before launching the benchmark. That rerun also used
+the added periodic \texttt{smaps\_rollup} sampling so that hugepage activity
+could be observed during the benchmark rather than only before and after it.
 
 The main measured value is throughput in requests per second as reported by
 \texttt{redis-benchmark}. The artifact also preserves raw benchmark logs so that
@@ -686,45 +715,91 @@ values.
 
 \section{Results to Report}
 
-The final measurement run should fill Table \ref{tab:results}. The table is
-left as a structured placeholder because benchmark numbers depend on the
-machine and should be produced from raw result directories rather than written
-from expectation.
+The final paper comparison uses the most recent paper-closer rerun, performed
+after changing Transparent Huge Pages to \texttt{always} on the shared WSL2
+kernel. Table \ref{tab:results} reports the measured means from those four raw
+result directories. The last column gives an \emph{effective} throughput for
+the push-then-read pair by computing, for each trial,
+\(2 / (1/r_{\text{LPUSH}} + 1/r_{\text{LRANGE}})\) and then averaging across
+trials. This is closer to the paper's app-level Redis comparison than
+reporting the two operations separately.
 
 \begin{table}[h]
-  \caption{Redis benchmark summary to be filled from \texttt{summary.csv}.}
+  \caption{Measured Redis throughput means from the THP-enabled paper-closer rerun, reported in thousands of requests per second (kRPS).}
   \label{tab:results}
-  \begin{tabular}{@{}llll@{}}
+  \begin{tabular}{@{}llrrr@{}}
     \toprule
-    Allocator & Operation & Mean RPS & Change vs. legacy \\
+    Run & Allocator & LPUSH & LRANGE & Combined \\
     \midrule
-    legacy & LPUSH five elements & 336000.00 & baseline \\
-    temeraire & LPUSH five elements & 501999.97 & +49.4\% \\
-    legacy & LRANGE five elements & 336000.00 & baseline \\
-    temeraire & LRANGE five elements & 503999.97 & +50.0\% \\
+    paper-off & legacy & 790.08 & 1224.58 & 960.48 \\
+    paper-off & temeraire & 808.74 & 1238.44 & 978.49 \\
+    paper-on & legacy & 796.25 & 1203.54 & 958.42 \\
+    paper-on & temeraire & 798.20 & 1206.96 & 960.92 \\
     \bottomrule
   \end{tabular}
 \end{table}
 
-The report should also describe variance, not just means. At minimum, the final
-analysis should include the number of trials, mean throughput per operation, and
-spread across trials. If \texttt{perf} is used, TLB-related counters should be
-reported only if counter availability and multiplexing are understood for the
-host system.
+\begin{table}[h]
+  \caption{Temeraire improvement relative to legacy and comparison with the Redis rows from Hunter et al.~\cite{273711}.}
+  \label{tab:paper-compare}
+  \begin{tabular}{@{}lrrrr@{}}
+    \toprule
+    Run & LPUSH delta & LRANGE delta & Combined delta & Paper delta \\
+    \midrule
+    paper-off & +2.36\% & +1.13\% & +1.88\% & +0.75\% (Redis$\dagger$) \\
+    paper-on & +0.24\% & +0.28\% & +0.26\% & +0.44\% (Redis) \\
+    \bottomrule
+  \end{tabular}
+\end{table}
 
-A possible interpretation structure for the final results is as follows. First,
-the legacy and hugepage-aware configurations should be compared by operation.
-Second, the magnitude of any difference should be compared with the scale of
-run-to-run variation. Third, the results should be related back to the original
-paper's claim: improvements are expected only if the benchmark creates memory
-placement behavior for which hugepage coverage matters on the tested host.
+Several points follow from these data. First, after enabling THP, the benchmark
+finally exercised the hugepage mechanism directly. The periodic
+\texttt{smaps\_rollup} snapshots show non-zero \texttt{AnonHugePages} during
+every completed run, and the end-state summaries still report substantial
+hugepage-backed anonymous memory: about 18 MiB for legacy release-off, 14 MiB
+for Temeraire release-off, 14 MiB for legacy release-on, and 20 MiB for
+Temeraire release-on. This is a qualitative improvement over the earlier
+\texttt{madvise}-mode runs, which recorded \texttt{AnonHugePages: 0 kB}
+throughout.
+
+Second, the measured Temeraire advantage is now smaller and more plausible than
+in the earlier local reruns. The release-off comparison still favors
+Temeraire, but only by +1.88\% in the combined metric rather than the earlier
++5.76\%. The release-on comparison is nearly flat at +0.26\%. This makes the
+new results closer to the paper's small Redis gains than the earlier
+\texttt{madvise}-mode local runs were.
+
+Third, the apparent benefit should still be compared with run-to-run variation.
+The THP-enabled release-off runs are much less noisy than the earlier local
+release-off attempt: LPUSH coefficient of variation is 1.78\% for legacy and
+1.34\% for Temeraire, while LRANGE is 2.56\% and 2.37\%, respectively. The
+release-on pair is somewhat noisier, with LPUSH coefficient of variation 3.11\%
+for legacy and 2.39\% for Temeraire, and LRANGE 4.27\% and 3.26\%. Even so,
+the observed differences remain small enough that they should be treated as
+modest local effects rather than as strong confirmation of a large throughput
+win.
+
+Finally, comparison with the paper is now more defensible but still not exact.
+Hunter et al. do not report separate LPUSH and LRANGE deltas; their Table~1
+gives a single Redis throughput improvement of +0.75\% for periodic release off
+and +0.44\% for periodic release on. The local THP-enabled release-on result of
++0.26\% is close to the paper's small effect size, and the local THP-enabled
+release-off result of +1.88\% is still somewhat larger but far closer than the
+earlier +5.76\% local run. The main claim that remains justified is therefore
+not that the paper's exact numbers were reproduced, but that once THP backing
+was actually present, the local Redis result moved toward the paper's regime of
+small positive improvements.
 
 \section{Discussion}
 
 The strongest part of this artifact is reproducibility of procedure. It records
 the exact public source versions, benchmark parameters, allocator mode, raw
 outputs, and system context. This makes the experiment inspectable and easier to
-rerun on another machine.
+rerun on another machine. On the tested WSL2/i7-10700K host, the final
+paper-closer rerun also reproduced the mechanism more convincingly than before:
+the recorded summaries and mid-run samples now show hugepage-backed anonymous
+memory, and the resulting Temeraire deltas are small rather than wildly
+inflated.
 
 The main limitation is fidelity. The original Redis experiments were run on
 Intel Skylake Xeon servers with a specific LLVM revision and Google's internal
@@ -753,9 +828,12 @@ can affect application behavior beyond the direct cost of allocation itself.
 This artifact provides a narrow but locally reproducible reproduction path for
 the Temeraire paper. Instead of claiming to reproduce fleet-scale results in
 WSCs, it focuses on the Redis case study and documents all relevant setup
-choices. The expected final outcome is not a universal confirmation of the
-paper's production claims, but a well-scoped comparison of legacy TCMalloc and
-hugepage-aware TCMalloc behavior under a public, repeatable Redis benchmark.
+choices. After correcting the host THP policy, the final paper-closer rerun
+shows both hugepage-backed anonymous memory and small positive Temeraire
+throughput differences: +1.88\% in the release-off configuration and +0.26\%
+in the release-on configuration. This is much closer to the paper's regime than
+the earlier \texttt{madvise}-mode reruns were, but it is still not exact enough
+to claim full reproduction of the paper's Redis numbers.
 
 The broader lesson of the paper is that memory allocation can influence system
 performance through memory layout, not only through the direct speed of

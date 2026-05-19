@@ -13,6 +13,7 @@ RUN_RELEASE_ON="${RUN_RELEASE_ON:-1}"
 RUN_PERF="${RUN_PERF:-0}"
 PAPER_NUMA_NODE="${PAPER_NUMA_NODE:-}"
 PAPER_BACKGROUND_RELEASE_RATE_BPS="${PAPER_BACKGROUND_RELEASE_RATE_BPS:-}"
+PAPER_SNAPSHOT_EVERY_TRIALS="${PAPER_SNAPSHOT_EVERY_TRIALS:-250}"
 
 REDIS_TRIALS="${REDIS_TRIALS:-2000}"
 REDIS_REQUESTS_PER_TRIAL="${REDIS_REQUESTS_PER_TRIAL:-1000000}"
@@ -39,6 +40,7 @@ SYSTEM_INFO_AFTER="$(find "${ROOT_DIR}/results/raw/system-info" -maxdepth 1 -typ
   echo "clients=${REDIS_CLIENTS}"
   echo "pipeline=${REDIS_PIPELINE}"
   echo "requested_numa_node=${PAPER_NUMA_NODE:-none}"
+  echo "snapshot_every_trials=${PAPER_SNAPSHOT_EVERY_TRIALS}"
   echo
   echo "## release modes requested"
   echo "run_release_off=${RUN_RELEASE_OFF}"
@@ -49,7 +51,11 @@ SYSTEM_INFO_AFTER="$(find "${ROOT_DIR}/results/raw/system-info" -maxdepth 1 -typ
   echo "single_machine=yes"
   echo "dockerized_environment=yes"
   echo "public_tcmalloc_historical_approximation=yes"
-  echo "exact_llvm_commit_cd442157cf=no"
+  if [[ "${BUILD_EXACT_LLVM:-0}" == "1" ]]; then
+    echo "exact_llvm_commit_cd442157cf=yes"
+  else
+    echo "exact_llvm_commit_cd442157cf=no"
+  fi
   echo "exact_skylake_hardware=host_dependent"
   echo
   echo "## notes"
@@ -68,6 +74,7 @@ run_mode() {
 
   export RUN_LABEL="${run_label}"
   export REDIS_NUMA_NODE="${PAPER_NUMA_NODE}"
+  export REDIS_SNAPSHOT_EVERY_TRIALS="${PAPER_SNAPSHOT_EVERY_TRIALS}"
 
   case "${release_mode}" in
     release-off)
