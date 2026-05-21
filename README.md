@@ -96,6 +96,19 @@ docker compose run --rm temeraire-dev bash -lc "echo always > /sys/kernel/mm/tra
 docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh"
 ```
 
+For repeated full paper-close runs, use the balanced allocator order so the
+same allocator is not first in every release-mode comparison:
+
+```bash
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh --allocator-order balanced"
+```
+
+Balanced order alternates between legacy-first and Temeraire-first across
+paper-close runs that use it. The selected run number and effective per-release
+mode order are written to the paper-close manifest with the rest of the run
+metadata. If an interrupted balanced run should not affect the next order, pass
+`--balanced-run-number N` to select the desired odd or even balanced run number.
+
 Why this is the central path:
 
 - it uses the paper-shaped Redis benchmark defaults
@@ -115,6 +128,8 @@ Important caveats:
 Useful overrides:
 
 - `RUN_RELEASE_OFF=1` and `RUN_RELEASE_ON=1` control whether to run the two release modes.
+- `--allocator-order legacy-first|temeraire-first|balanced` controls which allocator is measured first within each release-mode pair. `PAPER_ALLOCATOR_ORDER` can set the same value through the environment.
+- `--balanced-run-number N` overrides the balanced run number: odd numbers are legacy-first and even numbers are Temeraire-first. `PAPER_BALANCED_RUN_NUMBER` can set the same value through the environment.
 - `PAPER_NUMA_NODE=0` pins Redis and `redis-benchmark` to one NUMA node when supported.
 - `RUN_PERF=1` adds `perf stat` captures for each allocator mode.
 - `PAPER_BACKGROUND_RELEASE_RATE_BPS=<bytes_per_sec>` overrides the allocator background release rate for the release-on runs.
