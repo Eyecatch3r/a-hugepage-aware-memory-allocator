@@ -513,6 +513,73 @@ make the next rerun much better suited to answer the narrower question: whether
 Temeraire ever obtained hugepage-backed anonymous memory on this host during
 the benchmark itself. The answer from the later THP-enabled rerun is now yes.
 
+\subsection{Balanced Reruns and Current Release-On Anomaly}
+
+After the initial THP-enabled paper-closer comparison, additional balanced
+paper-closer reruns were started to test whether the small effect survives
+allocator order changes. The balanced driver alternates which allocator is
+measured first within each release-mode pair.
+
+The first two balanced reruns still pointed in the paper's direction:
+approximately \texttt{+0.44\%} and \texttt{+0.48\%} for release-off, and
+approximately \texttt{+0.12\%} and \texttt{+0.38\%} for release-on. A third
+balanced rerun then produced negative deltas, approximately \texttt{-0.76\%}
+for release-off and \texttt{-2.37\%} for release-on. A fourth balanced rerun
+was especially mixed: release-off strongly favored Temeraire at about
+\texttt{+3.51\%}, while release-on strongly disfavored Temeraire at about
+\texttt{-12.07\%}.
+
+The fourth rerun's release-on Temeraire result is treated as an anomaly rather
+than folded silently into the final interpretation. Its Redis log contains no
+application error. The run was correctly marked \texttt{paper-release-on},
+background release was enabled, THP was still \texttt{always}, and
+\texttt{smaps\_rollup} samples showed stable RSS and stable
+\texttt{AnonHugePages} throughout.
+
+The slowdown was visible from the first 250-trial window and only partially
+recovered near the end of the run, while the paired legacy release-on run was
+stable. This pattern suggested transient host, VM, or scheduling interference
+more than progressive Redis memory growth or THP collapse.
+
+A targeted release-on-only rerun with Temeraire first was then performed:
+
+\begin{lstlisting}[style=codestyle]
+docker compose run --rm temeraire-dev bash -lc "echo always > /sys/kernel/mm/transparent_hugepage/enabled && echo always > /sys/kernel/mm/transparent_hugepage/defrag"
+docker compose run --rm -e RUN_RELEASE_OFF=0 -e RUN_RELEASE_ON=1 temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh --allocator-order temeraire-first"
+\end{lstlisting}
+
+That targeted rerun returned to the earlier near-flat \texttt{release-on}
+range. Its combined push-plus-read delta was approximately \texttt{+0.12\%}:
+\texttt{-0.04\%} for LPUSH and \texttt{+0.37\%} for LRANGE. The Temeraire run
+was also stable across 250-trial windows, with combined throughput around
+\texttt{940--954 kRPS}. This makes the fourth balanced rerun's
+\texttt{-12.07\%} release-on result best treated as a transient outlier rather
+than as representative evidence that \texttt{release-on} Temeraire is
+consistently bad on this host.
+
+The current working summary for later report editing is:
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\toprule
+Run & Release-off & Release-on & Note \\
+\midrule
+THP fixed-order & \texttt{+1.88\%} & \texttt{+0.27\%} & first valid THP run \\
+balanced 1 & \texttt{+0.44\%} & \texttt{+0.12\%} & legacy first \\
+balanced 2 & \texttt{+0.48\%} & \texttt{+0.38\%} & Temeraire first \\
+balanced 3 & \texttt{-0.76\%} & \texttt{-2.37\%} & negative run \\
+balanced 4 & \texttt{+3.51\%} & \texttt{-12.07\%} & release-on outlier \\
+targeted release-on & n/a & \texttt{+0.12\%} & rerun of anomaly \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The intended final interpretation should therefore be cautious: release-off has
+a recurring positive signal in the paper's direction, while release-on is small
+and noisy. The artifact reproduces the Redis methodology and often lands in the
+paper's small-effect regime, but it does not robustly reproduce the exact Redis
+Table~1 statistics.
+
 \section{Remaining Limitations}
 
 The following limitations still apply and should be stated explicitly in seminar material:

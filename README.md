@@ -93,13 +93,6 @@ docker compose build
 docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
 docker compose run --rm temeraire-dev bash -lc "./scripts/check_allocator_preload.sh"
 docker compose run --rm temeraire-dev bash -lc "echo always > /sys/kernel/mm/transparent_hugepage/enabled && echo always > /sys/kernel/mm/transparent_hugepage/defrag && cat /sys/kernel/mm/transparent_hugepage/enabled && cat /sys/kernel/mm/transparent_hugepage/defrag"
-docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh"
-```
-
-For repeated full paper-close runs, use the balanced allocator order so the
-same allocator is not first in every release-mode comparison:
-
-```bash
 docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh --allocator-order balanced"
 ```
 
@@ -134,6 +127,13 @@ Useful overrides:
 - `RUN_PERF=1` adds `perf stat` captures for each allocator mode.
 - `PAPER_BACKGROUND_RELEASE_RATE_BPS=<bytes_per_sec>` overrides the allocator background release rate for the release-on runs.
 - `BUILD_EXACT_LLVM=1` builds a pinned LLVM/Clang toolchain from source. `LLVM_REF` and `LLVM_REPO_URL` can be overridden if the paper-era commit needs adjustment.
+
+For a targeted release-on-only diagnostic rerun, for example after an anomalous
+release-on result:
+
+```bash
+docker compose run --rm -e RUN_RELEASE_OFF=0 -e RUN_RELEASE_ON=1 temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh --allocator-order temeraire-first"
+```
 
 ### Trial Test Run
 
@@ -195,6 +195,30 @@ Raw outputs must not be modified. Derived tables, plots, and summaries go in `re
 ## Known Deviations from the Paper
 
 Expected deviations include host CPU, kernel version, Transparent Huge Page (THP) settings, Docker behavior, compiler version, and the fact that public TCMalloc source is only an approximation of the internal paper artifact. Results should be interpreted accordingly.
+
+## Current Result Interpretation
+
+The current result set should be read as a local reproduction attempt, not as an
+exact reproduction of the Redis rows in Table 1 of the paper.
+
+| Run family | Release off | Release on | Interpretation |
+|---|---:|---:|---|
+| THP fixed-order | +1.88% | +0.27% | first valid THP-enabled run |
+| Balanced 1 | +0.44% | +0.12% | legacy first |
+| Balanced 2 | +0.48% | +0.38% | Temeraire first |
+| Balanced 3 | -0.76% | -2.37% | negative run |
+| Balanced 4 | +3.51% | -12.07% | release-on outlier |
+| Targeted release-on | n/a | +0.12% | rerun of the anomaly |
+
+The strongest local signal is release-off: it is positive in most THP-enabled
+runs and its median is close to the paper's small Redis improvement. Release-on
+is smaller and noisier. The severe `-12.07%` release-on result did not reproduce
+in the targeted rerun, so it should be treated as a transient outlier unless it
+appears again.
+
+The defensible claim is that the artifact reproduces the Redis methodology and
+often lands in the paper's small-effect regime under active THP. It does not
+robustly reproduce the exact Redis Table 1 statistics.
 
 ## Reproducibility Checklist
 
