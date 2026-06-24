@@ -222,7 +222,7 @@ robustly reproduce the exact Redis Table 1 statistics.
 
 ## Reproducibility Checklist
 
-The following must be included in any report or result package:
+The following must be included to accurately reproduce the artifact:
 
 - Git commit of this repository and Docker image rebuild date
 - Host OS, Docker version, and kernel version inside the container
