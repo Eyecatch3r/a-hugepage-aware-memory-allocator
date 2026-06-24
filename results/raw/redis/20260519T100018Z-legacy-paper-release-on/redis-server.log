@@ -1,0 +1,9 @@
+60261:C 19 May 2026 10:00:18.462 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+60261:C 19 May 2026 10:00:18.462 # Redis version=6.0.9, bits=64, commit=25214bd7, modified=0, pid=60261, just started
+60261:C 19 May 2026 10:00:18.462 # Configuration loaded
+60261:M 19 May 2026 10:00:18.466 * Running mode=standalone, port=6380.
+60261:M 19 May 2026 10:00:18.467 # Server initialized
+60261:M 19 May 2026 10:00:18.467 # WARNING you have Transparent Huge Pages (THP) support enabled in your kernel. This will create latency and memory usage issues with Redis. To fix this issue run the command 'echo madvise > /sys/kernel/mm/transparent_hugepage/enabled' as root, and add it to your /etc/rc.local in order to retain the setting after a reboot. Redis must be restarted after THP is disabled (set to 'madvise' or 'never').
+60261:M 19 May 2026 10:00:18.469 * Ready to accept connections
+60261:M 19 May 2026 11:11:25.039 # User requested shutdown...
+60261:M 19 May 2026 11:11:25.039 # Redis is now ready to exit, bye bye...

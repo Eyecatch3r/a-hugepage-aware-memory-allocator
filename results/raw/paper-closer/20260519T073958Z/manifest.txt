@@ -1,0 +1,29 @@
+# Paper-Closer Redis Reproduction
+timestamp_utc=20260519T073958Z
+
+## intended match to paper
+redis_version=6.0.9
+allocator_comparison=legacy_vs_temeraire
+trials=2000
+requests_per_trial=1000000
+clients=50
+pipeline=16
+requested_numa_node=none
+snapshot_every_trials=250
+
+## release modes requested
+run_release_off=1
+run_release_on=1
+background_release_rate_bps_override=default
+
+## known unavoidable deviations
+single_machine=yes
+dockerized_environment=yes
+public_tcmalloc_historical_approximation=yes
+exact_llvm_commit_cd442157cf=yes
+exact_skylake_hardware=host_dependent
+
+## notes
+This run aims to get closer to the paper's Redis case study on one machine.
+It cannot reproduce Google's internal execution environment.
+system_info_file=/workspace/results/raw/system-info/20260519T073958Z.txt

@@ -94,13 +94,21 @@ This clarification is important for later seminar work because it prevents overc
 The container environment was adjusted to support the paper-shaped workflow:
 
 \begin{itemize}[leftmargin=1.5em]
+  \item the image base was kept explicit as \texttt{debian:bookworm-slim},
   \item Redis was pinned to \texttt{6.0.9},
   \item \texttt{gperftools} was pinned to \texttt{2.16},
   \item \texttt{clang} was added to the container toolchain,
   \item defaults for trial count, requests per trial, client count, and pipeline depth were added to \texttt{docker-compose.yml}.
 \end{itemize}
 
-The important point is that the container is no longer just a generic Linux environment; it now encodes a closer approximation of the paper's Redis experiment.
+The important point is that the container is no longer just a generic Linux
+environment; it now encodes a closer approximation of the paper's Redis
+experiment. The Linux environment still has two layers that must be documented
+separately: Debian bookworm user space from the image, and the shared Linux
+kernel supplied by Docker/WSL2 or the host. The latter controls THP behavior,
+kernel version, cgroup behavior, and hardware-counter availability, so it is
+part of the experimental metadata rather than a property fixed by the
+Dockerfile.
 
 \subsection{Historical tcmalloc Source}
 
@@ -226,6 +234,38 @@ In other words, the modern repository was buildable in general, but not in a con
 The second idea was to build a wrapper in a separate Bazel workspace.
 That also failed, because the wrapper did not naturally inherit all of TCMalloc's workspace dependencies, such as external Abseil references.
 
+\subsection{What Bazel Helped With}
+
+Bazel was useful precisely because historical TCMalloc is already organized as
+a Bazel project. Once the wrapper target was placed inside the cloned TCMalloc
+tree, Bazel supplied the allocator's native dependency graph, build settings,
+and link semantics without requiring a separate reconstruction in CMake or
+Make. It also made the allocator comparison narrow: both output libraries are
+produced from the same wrapper source, while the legacy variant adds
+\texttt{//tcmalloc:want\_no\_hpaa} and the Temeraire-capable variant does not.
+
+The same choice created several practical problems:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Bazelisk had to be installed in the container and pinned through
+  \texttt{USE\_BAZEL\_VERSION} so the historical checkout would build
+  consistently.
+  \item The exact LLVM compiler path had to be passed through Bazel using
+  \texttt{CC}, \texttt{CXX}, \texttt{--repo\_env}, and
+  \texttt{--action\_env}; otherwise Redis and TCMalloc could silently be built
+  by different compilers.
+  \item An external Bazel workspace was not sufficient, because the small
+  wrapper did not automatically inherit all of TCMalloc's repository-local and
+  external dependencies.
+  \item Target visibility mattered: \texttt{//tcmalloc:want\_no\_hpaa} was not
+  linkable from an arbitrary package, so the wrapper target had to live in
+  \texttt{tcmalloc/testing}.
+\end{itemize}
+
+In short, Bazel made the final build more faithful to the allocator's native
+structure, but only after the wrapper was moved into the right package and the
+compiler environment was made explicit.
+
 \subsection{Visibility Constraint}
 
 Another obstacle was target visibility.
@@ -315,7 +355,8 @@ into a TCMalloc maintenance branch.
 Collecting system metadata, allocator preload evidence, and raw benchmark
 outputs fit naturally into the repository structure. In other words, once the
 repository was already writing timestamped result directories, it was easy to
-add more context such as THP settings, NUMA information, and compiler version
+add more context such as the Debian user-space version, shared kernel release,
+container markers, THP settings, NUMA information, and compiler version
 records. This is useful because reproducibility problems in systems experiments
 often come less from one wrong command than from one unrecorded assumption.
 

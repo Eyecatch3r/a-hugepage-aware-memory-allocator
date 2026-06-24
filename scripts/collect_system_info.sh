@@ -15,8 +15,26 @@ outfile="${OUT_DIR}/${timestamp}.txt"
   echo "## uname"
   uname -a
   echo
-  echo "## os-release"
+  echo "## container os-release"
   cat /etc/os-release
+  echo
+  echo "## container linux distribution"
+  echo "debian_version=$(cat /etc/debian_version 2>/dev/null || true)"
+  echo "container_base_image=debian:bookworm-slim"
+  if [[ -f /.dockerenv ]]; then
+    echo "dockerenv_present=yes"
+  else
+    echo "dockerenv_present=no"
+  fi
+  echo
+  echo "## kernel and container context"
+  echo "kernel_release=$(uname -r)"
+  echo "kernel_version=$(uname -v)"
+  echo "machine=$(uname -m)"
+  echo "hostname=$(hostname 2>/dev/null || true)"
+  echo "pid1_comm=$(cat /proc/1/comm 2>/dev/null || true)"
+  echo "cgroup_summary"
+  cat /proc/self/cgroup 2>/dev/null || true
   echo
   echo "## cpuinfo model"
   grep -m1 "model name" /proc/cpuinfo || true

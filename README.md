@@ -189,6 +189,25 @@ Tracked counters: `dTLB-load-misses`, `dTLB-loads`, `cycles`, `instructions`, `p
 | `redis-server.log` | Redis server log for the run |
 
 `collect_system_info.sh` writes host and container metadata to `results/raw/system-info/`.
+It records the container distribution separately from the kernel context: the
+image user space is `debian:bookworm-slim`, while the active kernel, THP state,
+cgroup behavior, and hardware-visible topology come from the Docker/WSL2 or
+host Linux environment.
+
+The latest recorded system snapshot in this artifact is
+`results/raw/system-info/20260524T094418Z.txt`. Since the Docker image base has
+not changed, it documents the Linux environment used for the reported runs:
+
+| Field | Recorded value |
+|---|---|
+| Container user space | Debian GNU/Linux 12 (bookworm) |
+| Container base image | `debian:bookworm-slim` |
+| Shared kernel | `6.6.114.1-microsoft-standard-WSL2` |
+| Kernel build string | `#1 SMP PREEMPT_DYNAMIC Mon Dec 1 20:46:23 UTC 2025` |
+| Architecture | `x86_64 GNU/Linux` |
+| THP enabled policy | `[always] madvise never` |
+| THP defrag policy | `[always] defer defer+madvise madvise never` |
+| `khugepaged/max_ptes_none` | `511` |
 
 Raw outputs must not be modified. Derived tables, plots, and summaries go in `results/processed/` or `plots/generated/`.
 
@@ -225,7 +244,7 @@ robustly reproduce the exact Redis Table 1 statistics.
 The following must be included to accurately reproduce the artifact:
 
 - Git commit of this repository and Docker image rebuild date
-- Host OS, Docker version, and kernel version inside the container
+- Host OS, Docker version, container OS release, and shared kernel version
 - CPU model, core count, memory size, and NUMA topology
 - THP `enabled` and `defrag` settings
 - Redis version and TCMalloc commit

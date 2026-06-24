@@ -1,0 +1,15 @@
+timestamp_utc=20260524T105555Z
+
+## meminfo
+AnonHugePages:    180224 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+
+## transparent_hugepage
+[always] madvise never
+[always] defer defer+madvise madvise never
+511

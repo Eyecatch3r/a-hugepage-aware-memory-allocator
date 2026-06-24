@@ -1,0 +1,157 @@
+# System Information
+timestamp_utc=20260524T094418Z
+
+## uname
+Linux db26fd9e7165 6.6.114.1-microsoft-standard-WSL2 #1 SMP PREEMPT_DYNAMIC Mon Dec  1 20:46:23 UTC 2025 x86_64 GNU/Linux
+
+## os-release
+PRETTY_NAME="Debian GNU/Linux 12 (bookworm)"
+NAME="Debian GNU/Linux"
+VERSION_ID="12"
+VERSION="12 (bookworm)"
+VERSION_CODENAME=bookworm
+ID=debian
+HOME_URL="https://www.debian.org/"
+SUPPORT_URL="https://www.debian.org/support"
+BUG_REPORT_URL="https://bugs.debian.org/"
+
+## cpuinfo model
+model name	: Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz
+
+## lscpu
+Architecture:                            x86_64
+CPU op-mode(s):                          32-bit, 64-bit
+Address sizes:                           39 bits physical, 48 bits virtual
+Byte Order:                              Little Endian
+CPU(s):                                  16
+On-line CPU(s) list:                     0-15
+Vendor ID:                               GenuineIntel
+Model name:                              Intel(R) Core(TM) i7-10700K CPU @ 3.80GHz
+CPU family:                              6
+Model:                                   165
+Thread(s) per core:                      2
+Core(s) per socket:                      8
+Socket(s):                               1
+Stepping:                                5
+BogoMIPS:                                7584.02
+Flags:                                   fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush mmx fxsr sse sse2 ss ht syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon rep_good nopl xtopology cpuid tsc_known_freq pni pclmulqdq vmx ssse3 fma cx16 pdcm pcid sse4_1 sse4_2 x2apic movbe popcnt aes xsave avx f16c rdrand hypervisor lahf_lm abm 3dnowprefetch ssbd ibrs ibpb stibp ibrs_enhanced tpr_shadow ept vpid ept_ad fsgsbase bmi1 avx2 smep bmi2 erms invpcid rdseed adx smap clflushopt xsaveopt xsavec xgetbv1 xsaves vnmi md_clear flush_l1d arch_capabilities
+Virtualization:                          VT-x
+Hypervisor vendor:                       Microsoft
+Virtualization type:                     full
+L1d cache:                               256 KiB (8 instances)
+L1i cache:                               256 KiB (8 instances)
+L2 cache:                                2 MiB (8 instances)
+L3 cache:                                16 MiB (1 instance)
+NUMA node(s):                            1
+NUMA node0 CPU(s):                       0-15
+Vulnerability Gather data sampling:      Unknown: Dependent on hypervisor status
+Vulnerability Indirect target selection: Mitigation; Aligned branch/return thunks
+Vulnerability Itlb multihit:             KVM: Mitigation: VMX disabled
+Vulnerability L1tf:                      Not affected
+Vulnerability Mds:                       Not affected
+Vulnerability Meltdown:                  Not affected
+Vulnerability Mmio stale data:           Vulnerable: Clear CPU buffers attempted, no microcode; SMT Host state unknown
+Vulnerability Reg file data sampling:    Not affected
+Vulnerability Retbleed:                  Mitigation; Enhanced IBRS
+Vulnerability Spec rstack overflow:      Not affected
+Vulnerability Spec store bypass:         Mitigation; Speculative Store Bypass disabled via prctl
+Vulnerability Spectre v1:                Mitigation; usercopy/swapgs barriers and __user pointer sanitization
+Vulnerability Spectre v2:                Mitigation; Enhanced / Automatic IBRS; IBPB conditional; PBRSB-eIBRS SW sequence; BHI SW loop, KVM SW loop
+Vulnerability Srbds:                     Unknown: Dependent on hypervisor status
+Vulnerability Tsa:                       Not affected
+Vulnerability Tsx async abort:           Not affected
+Vulnerability Vmscape:                   Not affected
+
+## numa
+available: 1 nodes (0)
+node 0 cpus: 0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15
+node 0 size: 15952 MB
+node 0 free: 14568 MB
+node distances:
+node   0 
+  0:  10 
+
+## meminfo summary
+MemTotal:       16334916 kB
+MemFree:        14917636 kB
+MemAvailable:   15576860 kB
+AnonHugePages:     38912 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+
+## transparent hugepages
+[always] madvise never
+[always] defer defer+madvise madvise never
+511
+
+## compilers
+Debian clang version 14.0.6
+Target: x86_64-pc-linux-gnu
+Thread model: posix
+InstalledDir: /usr/bin
+
+gcc (Debian 12.2.0-14+deb12u1) 12.2.0
+Copyright (C) 2022 Free Software Foundation, Inc.
+This is free software; see the source for copying conditions.  There is NO
+warranty; not even for MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
+
+## exact llvm toolchain
+clang version 13.0.0 (https://github.com/llvm/llvm-project.git cd442157cff4aad209ae532cbf031abbe10bc1df)
+Target: x86_64-unknown-linux-gnu
+Thread model: posix
+InstalledDir: /workspace/third_party/install/llvm/bin
+
+llvm_repo_url=https://github.com/llvm/llvm-project.git
+llvm_ref_requested=cd442157cff4aad209ae532cbf031abbe10bc1df
+cd442157cff4aad209ae532cbf031abbe10bc1df
+
+## redis version
+Redis server v=6.0.9 sha=25214bd7:0 malloc=libc bits=64 build=254320a44eaeef8e
+
+## gperftools version hint
+gperftools not built yet
+
+## google tcmalloc commit
+8e534f50707469baac732559494559db95732e12
+
+## allocator artifacts
+total 4804
+-rw-r--r-- 1 root root 128574 May 18 17:45 libprofiler.a
+-rwxr-xr-x 1 root root   1019 May 18 17:45 libprofiler.la
+lrwxrwxrwx 1 root root     21 May 18 17:45 libprofiler.so -> libprofiler.so.0.5.13
+lrwxrwxrwx 1 root root     21 May 18 17:45 libprofiler.so.0 -> libprofiler.so.0.5.13
+-rwxr-xr-x 1 root root  68848 May 18 17:45 libprofiler.so.0.5.13
+-rw-r--r-- 1 root root 686682 May 18 17:45 libtcmalloc.a
+-rwxr-xr-x 1 root root   1019 May 18 17:45 libtcmalloc.la
+lrwxrwxrwx 1 root root     21 May 18 17:45 libtcmalloc.so -> libtcmalloc.so.4.5.18
+lrwxrwxrwx 1 root root     21 May 18 17:45 libtcmalloc.so.4 -> libtcmalloc.so.4.5.18
+-rwxr-xr-x 1 root root 396504 May 18 17:45 libtcmalloc.so.4.5.18
+-rw-r--r-- 1 root root 740100 May 18 17:45 libtcmalloc_and_profiler.a
+-rwxr-xr-x 1 root root   1111 May 18 17:45 libtcmalloc_and_profiler.la
+lrwxrwxrwx 1 root root     34 May 18 17:45 libtcmalloc_and_profiler.so -> libtcmalloc_and_profiler.so.4.6.13
+lrwxrwxrwx 1 root root     34 May 18 17:45 libtcmalloc_and_profiler.so.4 -> libtcmalloc_and_profiler.so.4.6.13
+-rwxr-xr-x 1 root root 422672 May 18 17:45 libtcmalloc_and_profiler.so.4.6.13
+-rw-r--r-- 1 root root 738686 May 18 17:45 libtcmalloc_debug.a
+-rwxr-xr-x 1 root root   1061 May 18 17:45 libtcmalloc_debug.la
+lrwxrwxrwx 1 root root     27 May 18 17:45 libtcmalloc_debug.so -> libtcmalloc_debug.so.4.5.18
+lrwxrwxrwx 1 root root     27 May 18 17:45 libtcmalloc_debug.so.4 -> libtcmalloc_debug.so.4.5.18
+-rwxr-xr-x 1 root root 422856 May 18 17:45 libtcmalloc_debug.so.4.5.18
+-rw-r--r-- 1 root root 365958 May 18 17:45 libtcmalloc_minimal.a
+-rwxr-xr-x 1 root root   1075 May 18 17:45 libtcmalloc_minimal.la
+lrwxrwxrwx 1 root root     29 May 18 17:45 libtcmalloc_minimal.so -> libtcmalloc_minimal.so.4.5.18
+lrwxrwxrwx 1 root root     29 May 18 17:45 libtcmalloc_minimal.so.4 -> libtcmalloc_minimal.so.4.5.18
+-rwxr-xr-x 1 root root 224248 May 18 17:45 libtcmalloc_minimal.so.4.5.18
+-rw-r--r-- 1 root root 420326 May 18 17:45 libtcmalloc_minimal_debug.a
+-rwxr-xr-x 1 root root   1117 May 18 17:45 libtcmalloc_minimal_debug.la
+lrwxrwxrwx 1 root root     35 May 18 17:45 libtcmalloc_minimal_debug.so -> libtcmalloc_minimal_debug.so.4.5.18
+lrwxrwxrwx 1 root root     35 May 18 17:45 libtcmalloc_minimal_debug.so.4 -> libtcmalloc_minimal_debug.so.4.5.18
+-rwxr-xr-x 1 root root 254840 May 18 17:45 libtcmalloc_minimal_debug.so.4.5.18
+drwxr-xr-x 1 root root    512 May 18 17:45 pkgconfig
+total 32
+-r-xr-xr-x 1 root root 13536 May 18 17:45 libtcmalloc_legacy.so
+-r-xr-xr-x 1 root root 13264 May 18 17:45 libtcmalloc_temeraire.so

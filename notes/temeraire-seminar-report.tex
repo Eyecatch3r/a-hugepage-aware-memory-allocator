@@ -476,6 +476,17 @@ links against \code{//tcmalloc}; the legacy build also links against
 \code{//tcmalloc:want_no_hpaa}. The benchmark harness selects the desired
 library through \code{LD_PRELOAD}.
 
+Bazel was helpful because it let the artifact use TCMalloc's native build graph
+instead of reconstructing allocator dependencies, compiler flags, and link
+semantics in a separate build system. It also kept the comparison narrow: both
+shared libraries are produced from the same wrapper source, and the intended
+difference is the allocator target plus the extra \code{//tcmalloc:want_no_hpaa}
+dependency in the legacy build. The cost was integration friction. Bazelisk had
+to be installed and pinned, the exact LLVM compiler path had to be passed
+through Bazel's action and repository environments, an external wrapper
+workspace did not inherit the right dependencies, and target visibility forced
+the wrapper into \code{tcmalloc/testing}.
+
 Runtime verification is necessary. Redis can still report
 \code{mem_allocator: libc} from its own build metadata even when the process
 allocator was replaced through \code{LD_PRELOAD}. The artifact therefore checks
@@ -529,6 +540,24 @@ order, supports balanced reruns, and runs after THP is set to \code{always}. Thu
 the direct path validates that the artifact works, while the paper-closer path
 defines the runs used for comparison with the paper.
 
+The container image is based on \code{debian:bookworm-slim}, so the documented
+user-space Linux distribution for the experiment is Debian~12/bookworm. This
+does not pin the active Linux kernel. Under Docker Desktop with WSL2, Redis runs
+inside the Debian container while using the shared Docker/WSL Linux kernel.
+Kernel release, THP behavior, cgroup state, NUMA topology, and hardware-counter
+availability are therefore recorded as experimental metadata rather than treated
+as properties fixed by the Dockerfile.
+
+The latest recorded system snapshot used for the reported artifact metadata is
+\code{results/raw/system-info/20260524T094418Z.txt}. It records Debian
+GNU/Linux~12 (bookworm) user space on the WSL2 kernel
+\code{6.6.114.1-microsoft-standard-WSL2}, built on Dec.~1,~2025, for
+\code{x86_64}. The same snapshot records THP and THP defrag with
+\code{always} selected, and \code{khugepaged/max_ptes_none=511}. Since the
+Docker image base did not change, this snapshot is representative of the
+container user-space version used by the reported runs, while the kernel fields
+remain host/WSL2 environment metadata.
+
 In compact form, the working command sequence is:
 
 \begin{lstlisting}[style=commandstyle]
@@ -553,6 +582,14 @@ THP settings, Redis version, TCMalloc commit, compiler metadata, allocator
 artifacts, raw benchmark output, and memory snapshots. Balanced reruns alternate
 which allocator runs first so that a sub-one-percent signal is less likely to be
 confused with fixed-order host drift.
+
+The metadata collection distinguishes the container OS from the active kernel:
+it records the Debian container release, Debian version, Docker/container
+markers, shared kernel release and version, cgroup context, CPU model, memory
+summary, THP settings, Redis version, TCMalloc commit, compiler versions, and
+allocator artifacts. This distinction matters because the experiment used
+Debian bookworm user space, but hugepage behavior came from the shared Linux
+kernel visible to Docker/WSL2.
 
 The primary metric is throughput in requests per second from
 \code{redis-benchmark}. LPUSH and LRANGE are collapsed into a combined
