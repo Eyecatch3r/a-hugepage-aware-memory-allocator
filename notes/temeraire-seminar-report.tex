@@ -1,40 +1,42 @@
 \documentclass[sigconf]{acmart}
+
 \acmConference{Master-Seminar}{Aktuelle Trends in der Systemsoftware}{SoSe 2026}
 
 \settopmatter{
-  printacmref=true,
-  printccs=true,
-  printfolios=false
+printacmref=true,
+printccs=false,
+printfolios=false
 }
 \renewcommand\footnotetextcopyrightpermission[1]{}
-\usepackage{url}
+
 \usepackage{booktabs}
-\usepackage{listings}
 \usepackage{array}
 \usepackage{xcolor}
 \usepackage{tikz}
-\usetikzlibrary{arrows.meta, positioning, fit, calc, backgrounds}
+\usepackage{listings}
+\usetikzlibrary{arrows.meta, positioning, fit, calc}
 
 \lstdefinestyle{commandstyle}{
-  basicstyle=\ttfamily\small,
-  breaklines=true,
-  columns=fullflexible,
-  frame=single
+basicstyle=\ttfamily\small,
+breaklines=true,
+columns=fullflexible,
+frame=single
 }
 
-\newcommand{\parencite}[1]{\citep{#1}}
+\urlstyle{tt}
+\DeclareRobustCommand{\code}[1]{\path{#1}}
 
-% Inline component labels matching Figure 6 colors
+% Inline component labels matching the Temeraire component figure.
 \newcommand{\compbox}[2]{%
-  \tikz[baseline=(X.base)]%
-    \node[
-      rounded corners=2pt,
-      inner xsep=3pt,
-      inner ysep=1.5pt,
-      draw=#1!70!black,
-      fill=#1!12,
-      line width=0.45pt
-    ] (X) {\texttt{\footnotesize #2}};%
+\tikz[baseline=(X.base)]%
+\node[
+rounded corners=2pt,
+inner xsep=3pt,
+inner ysep=1.5pt,
+draw=#1!70!black,
+fill=#1!12,
+line width=0.45pt
+] (X) {\texttt{\footnotesize #2}};%
 }
 
 \newcommand{\HugeAllocatorLabel}{\compbox{blue}{HugeAllocator}}
@@ -53,120 +55,112 @@
 \definecolor{myborder}{HTML}{666666}
 
 \tikzset{
-  allocused/.style={
-    draw=myborder,
-    fill=mybluefill,
-    rounded corners=1.5pt,
-    minimum height=0.62cm,
-    minimum width=0.92cm,
-    font=\scriptsize,
-    align=center
-  },
-  allocfree/.style={
-    draw=myborder,
-    fill=mygrayfill,
-    rounded corners=1.5pt,
-    minimum height=0.62cm,
-    minimum width=0.92cm,
-    font=\scriptsize,
-    align=center
-  },
-  component/.style={
-    draw=myblue,
-    fill=mybluefill,
-    rounded corners=3pt,
-    line width=0.8pt,
-    minimum height=0.82cm,
-    minimum width=2.45cm,
-    font=\scriptsize,
-    align=center,
-    inner sep=3pt
-  },
-  componentAlt/.style={
-    draw=mygreen,
-    fill=mygreenfill,
-    rounded corners=3pt,
-    line width=0.8pt,
-    minimum height=0.82cm,
-    minimum width=2.45cm,
-    font=\scriptsize,
-    align=center,
-    inner sep=3pt
-  },
-  cache/.style={
-    draw=myorange,
-    fill=myorangefill,
-    rounded corners=3pt,
-    line width=0.8pt,
-    minimum height=0.72cm,
-    minimum width=1.9cm,
-    font=\scriptsize,
-    align=center,
-    inner sep=2.5pt
-  },
-  arrow/.style={
-    -{Latex[length=2.4mm,width=1.6mm]},
-    line width=0.95pt,
-    draw=myborder
-  },
-  labelbox/.style={
-    font=\scriptsize,
-    text=myborder
-  }
+used/.style={
+draw=myborder,
+fill=mybluefill,
+rounded corners=1.5pt,
+minimum height=0.55cm,
+minimum width=0.82cm
+},
+free/.style={
+draw=myborder,
+fill=mygrayfill,
+rounded corners=1.5pt,
+minimum height=0.55cm,
+minimum width=0.82cm
+},
+component/.style={
+draw=myblue,
+fill=mybluefill,
+rounded corners=3pt,
+line width=0.8pt,
+minimum height=0.78cm,
+minimum width=2.2cm,
+font=\scriptsize,
+align=center,
+inner sep=3pt
+},
+componentAlt/.style={
+draw=mygreen,
+fill=mygreenfill,
+rounded corners=3pt,
+line width=0.8pt,
+minimum height=0.78cm,
+minimum width=2.2cm,
+font=\scriptsize,
+align=center,
+inner sep=3pt
+},
+cacheboxSmall/.style={
+draw=myorange,
+fill=myorangefill,
+rounded corners=3pt,
+line width=0.8pt,
+minimum height=0.65cm,
+minimum width=1.65cm,
+font=\scriptsize,
+align=center,
+inner sep=2.5pt
+},
+labelbox/.style={
+font=\scriptsize,
+text=myborder
+},
+arrow/.style={
+-{Latex[length=2.2mm,width=1.5mm]},
+line width=0.8pt,
+draw=myborder
+}
 }
 
 \begin{document}
 \raggedbottom
 
-\title{Reproducing the Temeraire Huge-Page Aware Artifact Results on a
-       Local Single Docker Setup}
+\title{Reproducing the Temeraire Hugepage-Aware Allocator Results in a
+Containerized Single-Host Environment}
 
 \author{Aldo Costa}
 \email{aldo.costa@hhu.de}
 \affiliation{%
-  \institution{Heinrich-Heine-Universit\"at}
-  \city{D\"usseldorf}
-  \state{Nordrhein-Westfalen}
-  \country{Deutschland}
+\institution{Heinrich-Heine-Universit\"at}
+\city{D\"usseldorf}
+\state{Nordrhein-Westfalen}
+\country{Deutschland}
 }
 
 \renewcommand{\shortauthors}{Costa}
 
 \begin{abstract}
-Temeraire is a hugepage-aware extension of TCMalloc whose goal is to
-improve application performance by increasing hugepage coverage without
-inducing uncontrolled fragmentation. The original OSDI~2021 paper
-evaluates Temeraire through individual application studies, a Google
-fleet experiment, and a production rollout. This report focuses on the
-part of that evaluation that can be approached with public artifacts: the
-Redis~6.0.9 case study.
+Temeraire is a hugepage-aware extension of TCMalloc that aims to improve
+application performance by preserving hugepage coverage and reducing TLB
+pressure. The original OSDI~2021 paper evaluates Temeraire through
+application studies, a Google fleet experiment, and a production rollout.
+This report deliberately narrows reproduction to the part that can be
+approximated with public code: the Redis~6.0.9 case study.
 
-The report first provides the memory-management background needed to
-understand why hugepage-aware allocation matters, then summarizes the
-relevant aspects of Temeraire's design. The reproduction artifact uses a
-Docker-based setup to compare a historical public TCMalloc revision in
-two configurations, one using the legacy pageheap path and one using the
-hugepage-aware path. The artifact records software versions, Transparent
-Huge Page settings, benchmark parameters, allocator preload state, and
-raw Redis benchmark output. The result is a deliberately narrow
-reproduction: it can test whether the Redis benchmark behavior is
-recoverable in a local setting, but it cannot reproduce Google's
-production environment or validate the paper's fleet-level claims.
+The artifact evolved from a generic allocator benchmark into a Redis-focused
+reproduction by pinning Redis, selecting a historical public TCMalloc revision,
+building separate legacy and hugepage-aware shared libraries, verifying
+allocator selection through \code{LD_PRELOAD}, and documenting THP behavior
+during the benchmark. Several practical issues shaped the final setup,
+including public-code divergence from Google's internal artifact, wrapper
+visibility constraints, exact LLVM/clang matching, WSL2/Docker THP behavior,
+and a release-on outlier that required a targeted rerun.
+
+With THP active and periodic release disabled, the local median Temeraire
+advantage is $+0.48\%$, compared with the paper's $+0.75\%$. The release-on
+condition is smaller and noisier. The result should therefore be read as a
+careful public reproduction of the Redis methodology and small-effect regime,
+not as a validation of the paper's fleet-scale claims.
 \end{abstract}
 
-\begin{CCSXML}
-<ccs2012>
-   <concept>
-       <concept_id>10011007.10010940.10010941.10010949.10010950</concept_id>
-       <concept_desc>Software and its engineering~Memory management</concept_desc>
-       <concept_significance>500</concept_significance>
-       </concept>
-   <concept>
-       <concept_id>10010520.10010575.10010755</concept_id>
-       <concept_desc>Computer systems organization~Reliability</concept_desc>
-       <concept_significance>300</concept_significance>
-       </concept>
- </ccs2012>
+\begin{CCSXML} <ccs2012> <concept>
+<concept_id>10011007.10010940.10010941.10010949.10010950</concept_id>
+<concept_desc>Software and its engineering~Memory management</concept_desc>
+<concept_significance>500</concept_significance> </concept> <concept>
+<concept_id>10010520.10010575.10010755</concept_id>
+<concept_desc>Computer systems organization~Reliability</concept_desc>
+<concept_significance>300</concept_significance> </concept> </ccs2012>
 \end{CCSXML}
 
 \ccsdesc[500]{Software and its engineering~Memory management}
@@ -179,732 +173,529 @@ reproducibility}
 
 \section{Introduction}
 
-Memory allocation is often treated as a local implementation concern of
-C and C++ programs. In large systems, however, allocation decisions also
-govern where objects land in memory, whether huge pages can be exploited
-effectively, and how frequently the processor must perform costly address
-translation work. Hunter et al.\ make this point explicitly in the
-Temeraire paper: careful allocator design can improve ``fleet
-efficiency'' by reducing costs that manifest outside the allocator itself
-\cite{273711}.
+Memory allocation is often treated as a local implementation detail of C and
+C++ programs. Temeraire's premise is broader: allocator decisions also shape
+where objects land in memory, whether huge pages remain usable, and how much
+address-translation work the processor must perform later. Hunter et al. argue
+that allocator design can therefore affect fleet efficiency, not just the direct
+cost of \code{malloc} and \code{free} \cite{273711}.
 
-Temeraire modifies the pageheap of TCMalloc so that allocations are
-placed with awareness of hugepage-sized regions. The allocator is
-therefore not judged solely by the time spent inside \texttt{malloc} and
-\texttt{free}. Its placement decisions affect subsequent execution,
-because object layout influences hugepage coverage and hugepage coverage
-influences TLB behavior. In some cases a more deliberate allocation
-decision is worthwhile even if the decision itself carries a small
-overhead.
+A full reproduction of the Temeraire paper is outside the scope of this seminar
+artifact. The paper's main evidence comes from Google's production environment,
+including internal workloads, large-scale telemetry, and fleet-level rollout
+data. Those conditions are not available externally. This report therefore
+focuses on the Redis~6.0.9 case study: a public workload where the paper gives
+enough benchmark detail to support a local reproduction attempt.
 
-A complete reproduction of the Temeraire paper is not feasible in a
-seminar setting. The paper's strongest results come from Google's
-production environment, where diverse workloads run across
-warehouse-scale infrastructure and large-scale telemetry is available to
-the authors. That setting is inaccessible to external researchers. The
-reproduction target here is therefore deliberately smaller: the Redis
-case study from the paper. Redis~6.0.9 is run under a legacy TCMalloc
-pageheap configuration and under a hugepage-aware configuration, with
-both variants measured across repeated \texttt{redis-benchmark} trials.
+The goal is not to reconstruct Google's internal allocator binary. Instead, the
+artifact asks a narrower question: can the Redis comparison be approximated with
+public code closely enough to observe the same small-effect regime? Answering
+that required more than running a benchmark. The repository had to be reshaped,
+the allocator comparison had to be reconstructed, and the local hugepage path had
+to be verified explicitly.
 
-This report makes three contributions. It explains the
-memory-management background needed to understand why hugepage-aware
-allocation can affect application performance. It summarizes the relevant
-parts of Temeraire's design. And it documents a public reproduction
-artifact with pinned source versions, a containerized setup, explicit
-benchmark parameters, preserved raw output, and documented deviations
-from the original experimental conditions.
+\section{Background and Temeraire Mechanism}
+\label{sec:background-temeraire}
 
-\section{Background}
+Processors translate virtual addresses to physical addresses through page
+tables. Because page-table walks are expensive, recent translations are cached
+in translation lookaside buffers (TLBs). With ordinary 4~KiB pages, large
+working sets can require many translations. A 2~MiB hugepage covers the same
+address range as 512 ordinary pages, so one hugepage TLB entry can cover much
+more memory than one ordinary-page entry.
 
-\subsection{Paging and Address Translation}
-
-Modern operating systems give each process its own virtual address space,
-so program instructions operate on virtual rather than physical
-addresses. The processor and operating system translate virtual pages to
-physical page frames through page tables. Because walking these tables is
-expensive, processors cache recent translations in translation lookaside
-buffers (TLBs).
-
-With ordinary 4~KiB pages, a large working set can require a large
-number of distinct translations. A 2~MiB memory region, for instance,
-decomposes into 512 ordinary pages; if the active working set exceeds
-the TLB's effective reach, the processor must perform additional
-page-table walks that stall execution and reduce application throughput.
-
-\subsection{Huge Pages}
-
-Huge pages reduce this address-translation overhead by mapping larger
-virtual memory regions with fewer page-table entries. On x86 systems the
-standard huge page size is 2~MiB, so a single TLB entry covers the same
-range that would otherwise require 512 ordinary mappings. The benefit is
-not that 2~MiB of data are loaded into cache at once; it is that fewer
-cached translations are needed to cover the same amount of memory.
-
-Realizing this benefit depends on memory layout. A hugepage mapping is
-useful only when the virtual range is suitably aligned and can be backed
-by a contiguous physical range. Linux Transparent Huge Pages (THP) can
-create such mappings automatically, but the kernel's ability to do so
-depends partly on the layout produced by the application allocator. When
-live objects are scattered across many hugepage-sized regions, the kernel
-has little opportunity to keep those regions as intact huge pages.
-
-\subsection{Fragmentation Trade-off}
-
-The difficulty lies in balancing memory efficiency against TLB
-efficiency. Returning unused memory in small pieces can reduce resident
-memory usage, but may force the kernel to split a hugepage mapping into
-ordinary pages. Retaining the hugepage intact preserves TLB coverage but
-keeps physical memory resident that the application no longer actively
-uses.
+The benefit is not that 2~MiB of data are loaded into cache at once. The benefit
+is that fewer cached address translations are needed. Whether that benefit is
+realized depends on layout: hugepage mappings require suitably aligned and
+contiguous regions. Linux Transparent Huge Pages (THP) can create such mappings,
+but its success depends partly on how the user-space allocator arranges live
+objects.
 
 \begin{figure}[t]
-  \centering
-  \begin{tikzpicture}[x=0.72cm,y=0.72cm]
+\centering
+\begin{tikzpicture}[x=0.68cm,y=0.68cm]
+\node[labelbox, anchor=west] at (-0.35,2.45) {After allocation};
+\node[labelbox, anchor=west] at (-0.35,0.95) {After frees};
 
-    % row labels
-    \node[labelbox, anchor=west] at (-0.25,2.55) {After allocation};
-    \node[labelbox, anchor=west] at (-0.25,0.95) {After various free operations};
+```
+\foreach \i in {0,...,7} { \node[used] at (\i,1.75) {}; }
 
-    % top row
-    \foreach \i in {0,...,7} {
-      \node[allocused] at (\i,1.75) {};
-    }
+\node[used] at (0,0.25) {};
+\node[free] at (1,0.25) {};
+\node[used] at (2,0.25) {};
+\node[free] at (3,0.25) {};
+\node[free] at (4,0.25) {};
+\node[used] at (5,0.25) {};
+\node[free] at (6,0.25) {};
+\node[used] at (7,0.25) {};
 
-    % bottom row
-    \node[allocused] at (0,0.15) {};
-    \node[allocfree] at (1,0.15) {};
-    \node[allocused] at (2,0.15) {};
-    \node[allocfree] at (3,0.15) {};
-    \node[allocfree] at (4,0.15) {};
-    \node[allocused] at (5,0.15) {};
-    \node[allocfree] at (6,0.15) {};
-    \node[allocused] at (7,0.15) {};
+\draw[draw=myborder, line width=0.8pt, rounded corners=3pt]
+  (-0.65,-0.25) rectangle (7.65,2.15);
+\node[labelbox] at (3.5,-0.75) {one hugepage-sized region};
 
-    % outer border
-    \draw[draw=myborder, line width=0.9pt, rounded corners=3pt]
-      (-0.75,-0.35) rectangle (7.7,2.25);
+\node[used, minimum width=0.45cm, minimum height=0.32cm] at (2.4,-1.25) {};
+\node[labelbox, anchor=west] at (2.7,-1.25) {used};
+\node[free, minimum width=0.45cm, minimum height=0.32cm] at (4.0,-1.25) {};
+\node[labelbox, anchor=west] at (4.3,-1.25) {free};
+```
 
-    % bottom label
-    \node[labelbox] at (3.5,-0.85) {one hugepage-sized region};
-
-    % legend below
-    \node[allocused, minimum width=0.55cm, minimum height=0.38cm] at (2.4,-1.45) {};
-    \node[labelbox, anchor=west] at (2.75,-1.45) {used};
-
-    \node[allocfree, minimum width=0.55cm, minimum height=0.38cm] at (4.2,-1.45) {};
-    \node[labelbox, anchor=west] at (4.55,-1.45) {free};
-
-  \end{tikzpicture}
-  \caption{Allocation and deallocation patterns can create internal
-  fragmentation. Free space exists within the hugepage-sized region, but
-  live allocations prevent any contiguous range from being returned to
-  the OS intact. Redrawn after Figure~1 in Hunter et al.~\cite{273711}.}
-  \Description{A hugepage-sized memory region before and after free operations, showing used blocks separated by fragmented free blocks.}
-  \label{fig:fragmentation}
+\end{tikzpicture}
+\caption{Fragmentation inside a hugepage-sized region. Free memory exists,
+but live objects prevent the whole region from being released intact. Redrawn
+after Figure~1 in Hunter et al.~\cite{273711}.}
+\Description{A hugepage-sized memory region before and after free operations,
+showing used blocks separated by fragmented free blocks.}
+\label{fig:fragmentation}
 \end{figure}
 
-Figure~\ref{fig:fragmentation} illustrates this in simplified form. The
-region still contains free memory, but the free space is interrupted by
-live allocations. Returning the free pieces to the OS risks losing
-hugepage coverage; retaining the whole region keeps physical memory
-partly idle. A hugepage-aware allocator must navigate this trade-off
-explicitly, seeking to keep hot memory on huge pages while allowing
-sufficiently empty regions to be released. Temeraire approaches this by
-changing the placement decisions made inside TCMalloc's pageheap.
+Figure~\ref{fig:fragmentation} shows the central trade-off. Returning small
+free pieces to the OS can reduce resident memory, but it may split hugepage
+mappings. Keeping the hugepage intact preserves TLB coverage, but leaves some
+physical memory idle. Temeraire exists to make this trade-off explicit inside
+the allocator backend.
 
-\section{Temeraire}
-
-\subsection{TCMalloc Context}
-
-TCMalloc is organized as a hierarchy of allocation caches. Small
-allocations are typically served by per-CPU or per-thread caches before
-reaching a central cache; larger, page-granularity requests eventually
-reach the pageheap, which obtains memory from the OS and releases unused
-spans when possible. Temeraire modifies this backend layer rather than
-replacing the allocator as a whole.
+TCMalloc is organized as a hierarchy of caches. Many small allocations are
+served by upper per-CPU, transfer, or central-cache layers. Larger
+page-granularity requests eventually reach the pageheap, which obtains memory
+from the OS and releases unused spans. Temeraire modifies this backend pageheap
+layer rather than replacing the whole allocator.
 
 \begin{figure}[t]
-  \centering
-  \begin{tikzpicture}[node distance=0.55cm and 0.7cm]
+\centering
+\begin{tikzpicture}[node distance=0.55cm and 0.65cm]
+\node[componentAlt] (os) {OS pageheap\\\texttt{mmap} / release};
 
-    \node[componentAlt] (os) {OS pageheap\\mmap / release};
+\node[cacheboxSmall, above=0.45cm and 0.75cm of os] (central8) {central\\8 bytes};
+\node[cacheboxSmall, right=0.65cm of central8] (centralbig) {central\\larger spans};
 
-    \node[cache, above=0.5cm and 0.8cm of os] (central8) {central\\8 bytes};
-    \node[cache, right=0.75cm of central8] (centralbig) {central\\larger spans};
+\node[cacheboxSmall, above=0.58cm of central8] (transfer8) {transfer};
+\node[cacheboxSmall, above=0.58cm of centralbig] (transferbig) {transfer};
 
-    \node[cache, above=0.65cm of central8] (transfer8) {transfer};
-    \node[cache, above=0.65cm of centralbig] (transferbig) {transfer};
+\node[cacheboxSmall, above=0.58cm of transfer8] (cpu0) {CPU 0\\cache};
+\node[cacheboxSmall, above=0.58cm of transferbig] (cpu9) {CPU 9\\cache};
 
-    \node[cache, above=0.65cm of transfer8] (cpu0) {CPU 0\\cache};
-    \node[cache, above=0.65cm of transferbig] (cpu9) {CPU 9\\cache};
+\draw[arrow] (os) -- (central8);
+\draw[arrow] (os) -- (centralbig);
+\draw[arrow] (central8) -- (transfer8);
+\draw[arrow] (centralbig) -- (transferbig);
+\draw[arrow] (transfer8) -- (cpu0);
+\draw[arrow] (transferbig) -- (cpu9);
 
-    \draw[arrow] (os) -- (central8);
-    \draw[arrow] (os) -- (centralbig);
-    \draw[arrow] (central8) -- (transfer8);
-    \draw[arrow] (centralbig) -- (transferbig);
-    \draw[arrow] (transfer8) -- (cpu0);
-    \draw[arrow] (transferbig) -- (cpu9);
+\node[labelbox, left=0.12cm of cpu0] {malloc/free};
+\node[labelbox, below=0.40cm of os] {large requests};
 
-    \node[labelbox, left=0.15cm of cpu0] {malloc/free};
-    \node[labelbox, below=0.48cm of os] {large requests};
+\node[
+  draw=mygreen,
+  dashed,
+  rounded corners=4pt,
+  line width=0.8pt,
+  fit=(os),
+  inner sep=0.20cm,
+  label={[labelbox]below:Temeraire changes this backend}
+] {};
+```
 
-    \node[
-      draw=mygreen,
-      dashed,
-      rounded corners=4pt,
-      line width=0.9pt,
-      fit=(os),
-      inner sep=0.22cm,
-      label={[labelbox]below:Temeraire changes this backend}
-    ] {};
-
-  \end{tikzpicture}
-  \caption{Simplified TCMalloc cache hierarchy. Temeraire replaces the
-  pageheap backend without disturbing the upper cache layers. Redrawn
-  after Figure~3 in Hunter et al.~\cite{273711}.}
-  \Description{A simplified TCMalloc hierarchy from CPU caches through transfer and central caches down to the OS pageheap.}
-  \label{fig:tcmalloc}
+\end{tikzpicture}
+\caption{Simplified TCMalloc hierarchy. Temeraire changes the backend
+pageheap layer while leaving the upper cache structure intact. Redrawn after
+Figure~3 in Hunter et al.~\cite{273711}.}
+\Description{A simplified hierarchy from CPU caches through transfer and
+central caches down to the OS pageheap.}
+\label{fig:tcmalloc}
 \end{figure}
 
-Figure~\ref{fig:tcmalloc} shows the pageheap's position in the
-hierarchy. Many allocation requests are resolved in the upper cache
-layers and never reach the pageheap. This is architecturally convenient
-for Temeraire: because the pageheap is not on the critical path for
-every small allocation, it can afford more deliberate placement logic.
-The cost of that logic is expected to be recovered later, through better
-hugepage coverage and fewer TLB stalls in application code.
-
-\subsection{Component Overview}
-
-Temeraire divides the pageheap backend into several cooperating
-components, shown in Figure~\ref{fig:temeraire-components}.
+Figure~\ref{fig:tcmalloc} matters for the reproduction because Temeraire is not
+tested as a completely separate allocator. The experiment compares two backend
+configurations of TCMalloc: the legacy pageheap and the hugepage-aware path.
 
 \begin{figure}[t]
-  \centering
-  \resizebox{\columnwidth}{!}{%
-  \begin{tikzpicture}[
-    >=Latex,
-    font=\scriptsize,
-    node distance=0.8cm and 1.2cm,
-    every node/.style={align=center}
-  ]
+\centering
+\resizebox{\columnwidth}{!}{%
+\begin{tikzpicture}[
+>=Latex,
+font=\scriptsize,
+node distance=0.8cm and 1.2cm,
+every node/.style={align=center}
+]
 
-    \tikzset{
-      allocatorbox/.style={
-        draw=blue!60!black,
-        fill=blue!12,
-        rounded corners=4pt,
-        line width=0.9pt,
-        minimum width=3.0cm,
-        minimum height=0.95cm,
-        font=\small\ttfamily
-      },
-      cachebox/.style={
-        draw=violet!70!black,
-        fill=violet!15,
-        rounded corners=4pt,
-        line width=0.9pt,
-        minimum width=2.55cm,
-        minimum height=0.9cm,
-        font=\small\ttfamily
-      },
-      fillerbox/.style={
-        draw=green!50!black,
-        fill=green!15,
-        rounded corners=4pt,
-        line width=0.9pt,
-        minimum width=2.8cm,
-        minimum height=0.9cm,
-        font=\small\ttfamily
-      },
-      regionbox/.style={
-        draw=orange!70!black,
-        fill=orange!10,
-        rounded corners=4pt,
-        dashed,
-        line width=0.9pt,
-        minimum width=2.8cm,
-        minimum height=0.9cm,
-        font=\small\ttfamily
-      },
-      solidflow/.style={
-        -{Latex[length=2.5mm,width=1.7mm]},
-        line width=1.0pt,
-        draw=black!75
-      },
-      dottedflow/.style={
-        -{Latex[length=2.5mm,width=1.7mm]},
-        dotted,
-        line width=1.0pt,
-        draw=black!70
-      },
-      textlabel/.style={
-        font=\small,
-        text=black
-      },
-      biglabel/.style={
-        font=\large,
-        text=black
-      }
-    }
-
-    \node[allocatorbox] (allocator) {HugeAllocator};
-    \node[cachebox, below=1.1cm of allocator] (cache) {HugeCache};
-
-    \node[fillerbox, below left=2.0cm and 1.5cm of cache] (filler) {HugeFiller};
-    \node[regionbox, below right=2.0cm and 1.8cm of cache] (region) {HugeRegion};
-
-    \node[biglabel, left=3.8cm of allocator, yshift=-0.2cm] (unbacked) {unbacked hugepages};
-    \node[biglabel, left=3.5cm of cache, yshift=-1.0cm] (backed) {backed hugepages};
-
-    \draw[solidflow] (cache) -- (allocator);
-    \draw[solidflow] (filler.north east) -- (cache.south west);
-    \draw[dottedflow] (region.north west) -- (allocator.south east);
-
-    \node[textlabel, below=2.0cm of filler] (smallreq)
-      {small requests\\($< 1$ MiB)};
-    \node[textlabel, below=2.0cm of cache] (largereq)
-      {large requests\\($\geq 1$ GiB)};
-    \node[textlabel, below=2.0cm of region] (medreq)
-      {medium requests\\($1$ MiB -- $1$ GiB)};
-
-    \draw[solidflow] (smallreq.north) -- (filler.south);
-    \draw[solidflow] (largereq.north) -- (cache.south);
-    \draw[solidflow] (medreq.north west) -- (cache.south east);
-    \draw[dottedflow] (medreq.north) --
-      node[right, textlabel, xshift=0.08cm] {\emph{sometimes}} (region.south);
-
-  \end{tikzpicture}%
+```
+\tikzset{
+  allocatorbox/.style={
+    draw=blue!60!black,
+    fill=blue!12,
+    rounded corners=4pt,
+    line width=0.9pt,
+    minimum width=3.0cm,
+    minimum height=0.95cm,
+    font=\small\ttfamily
+  },
+  cachebox/.style={
+    draw=violet!70!black,
+    fill=violet!15,
+    rounded corners=4pt,
+    line width=0.9pt,
+    minimum width=2.55cm,
+    minimum height=0.9cm,
+    font=\small\ttfamily
+  },
+  fillerbox/.style={
+    draw=green!50!black,
+    fill=green!15,
+    rounded corners=4pt,
+    line width=0.9pt,
+    minimum width=2.8cm,
+    minimum height=0.9cm,
+    font=\small\ttfamily
+  },
+  regionbox/.style={
+    draw=orange!70!black,
+    fill=orange!10,
+    rounded corners=4pt,
+    dashed,
+    line width=0.9pt,
+    minimum width=2.8cm,
+    minimum height=0.9cm,
+    font=\small\ttfamily
+  },
+  solidflow/.style={
+    -{Latex[length=2.5mm,width=1.7mm]},
+    line width=1.0pt,
+    draw=black!75
+  },
+  dottedflow/.style={
+    -{Latex[length=2.5mm,width=1.7mm]},
+    dotted,
+    line width=1.0pt,
+    draw=black!70
+  },
+  textlabel/.style={
+    font=\small,
+    text=black
+  },
+  biglabel/.style={
+    font=\large,
+    text=black
   }
-  \caption{Temeraire's component structure. Small requests are routed to
-  \texttt{HugeFiller}, large requests to \texttt{HugeCache}, and medium
-  requests usually to \texttt{HugeCache} but occasionally to
-  \texttt{HugeRegion}. \texttt{HugeCache} operates on backed hugepages;
-  \texttt{HugeAllocator} manages unbacked hugepages. Adapted after
-  Figure~6 in Hunter et al.~\cite{273711}.}
-  \Description{A diagram of Temeraire components connecting HugeAllocator, HugeCache, HugeFiller, and HugeRegion with request flows by allocation size.}
-  \label{fig:temeraire-components}
+}
+
+\node[allocatorbox] (allocator) {HugeAllocator};
+\node[cachebox, below=1.1cm of allocator] (cache) {HugeCache};
+
+\node[fillerbox, below left=2.0cm and 1.5cm of cache] (filler) {HugeFiller};
+\node[regionbox, below right=2.0cm and 1.8cm of cache] (region) {HugeRegion};
+
+\node[biglabel, left=3.8cm of allocator, yshift=-0.2cm] (unbacked) {unbacked hugepages};
+\node[biglabel, left=3.5cm of cache, yshift=-1.0cm] (backed) {backed hugepages};
+
+\draw[solidflow] (cache) -- (allocator);
+\draw[solidflow] (filler.north east) -- (cache.south west);
+\draw[dottedflow] (region.north west) -- (allocator.south east);
+
+\node[textlabel, below=2.0cm of filler] (smallreq)
+  {small requests\\($< 1$ MiB)};
+\node[textlabel, below=2.0cm of cache] (largereq)
+  {large requests\\($\geq 1$ GiB)};
+\node[textlabel, below=2.0cm of region] (medreq)
+  {medium requests\\($1$ MiB to $1$ GiB)};
+
+\draw[solidflow] (smallreq.north) -- (filler.south);
+\draw[solidflow] (largereq.north) -- (cache.south);
+\draw[solidflow] (medreq.north west) -- (cache.south east);
+\draw[dottedflow] (medreq.north) --
+  node[right, textlabel, xshift=0.08cm] {\emph{sometimes}} (region.south);
+```
+
+\end{tikzpicture}%
+}
+\caption{Temeraire's component structure. Small requests are routed to
+\code{HugeFiller}, large requests to \code{HugeCache}, and medium requests
+usually to \code{HugeCache} but occasionally to \code{HugeRegion}. Adapted
+after Figure~6 in Hunter et al.~\cite{273711}.}
+\Description{A diagram of Temeraire components connecting HugeAllocator,
+HugeCache, HugeFiller, and HugeRegion with request flows by allocation size.}
+\label{fig:temeraire-components}
 \end{figure}
 
-The \HugeAllocatorLabel{} manages hugepage-aligned virtual address ranges
-and supplies them to the other components on demand. The \HugeCacheLabel{}
-retains fully empty, backed hugepages for reuse, avoiding the latency of
-immediately releasing and re-backing memory during short-term allocation
-fluctuations.
+Figure~\ref{fig:temeraire-components} summarizes the backend components relevant
+for the artifact. \HugeAllocatorLabel{} manages hugepage-aligned virtual
+address ranges. \HugeCacheLabel{} keeps completely empty backed hugepages for
+reuse. \HugeFillerLabel{} handles small allocations and is the key component for
+Redis. \HugeRegionLabel{} handles medium-sized allocations that would otherwise
+create large slack regions.
 
-The \HugeFillerLabel{} handles small allocations. Rather than choosing
-any available hole, it applies placement policies designed to preserve
-useful free ranges and increase the probability that individual hugepages
-eventually become completely empty, at which point they can be safely
-released.
+The key Redis-relevant policy is in \HugeFillerLabel{}. For a request of size
+$K$, it prefers a hugepage whose longest free run is just large enough for the
+request. When several candidates are equivalent, it prefers the fuller one. This
+avoids consuming long free runs unnecessarily and avoids disturbing nearly empty
+hugepages that might otherwise drain and be released.
 
-The \HugeRegionLabel{} addresses allocations too large for the filler
-but too small to round to a full hugepage without significant waste.
-Without this component, repeated allocations slightly above 2~MiB would
-consume nearly a full hugepage each. Regions allow such allocations to
-share a larger contiguous range and cross hugepage boundaries.
+The Redis list workload in the paper performs small list-node and string-value
+allocations. Under Temeraire, these requests are expected to pass through
+\HugeFillerLabel{}; under the legacy pageheap, they are handled without the same
+hugepage-aware placement objective. The experimental hypothesis is therefore
+small and specific: if Temeraire consolidates Redis allocations more
+effectively, Redis should show a small throughput improvement from reduced TLB
+pressure.
 
-The top-level allocator routes requests between these components. Small
-requests go to the filler, while medium and large requests are directed to
-regions or full hugepage ranges depending on size. This size-based routing
-reflects that small, medium, and large allocations generate qualitatively
-different fragmentation risks.
+Periodic memory release complicates this effect. When release is enabled,
+TCMalloc can return memory to the OS using mechanisms such as
+\code{MADV_DONTNEED}. This can interact with hugepage coverage and add
+variance. For this reason, the report treats release-off as the cleaner
+placement signal and release-on as a noisier condition.
 
-\subsection{Placement Heuristic}
+\section{Reproduction Target and Artifact Evolution}
+\label{sec:target-artifact}
 
-The central policy is implemented in \texttt{HugeFiller}. Ordinary
-best-fit allocation is insufficient because Temeraire cares not only
-about the total amount of free space within a hugepage, but also about
-its shape. A hugepage with one long contiguous free range is more
-valuable than one with many small holes, since it can accommodate larger
-future requests without fragmentation.
+The original paper reports application studies, a fleet experiment, and a
+production rollout. Only the Redis case study is realistic for a public seminar
+reproduction. The paper gives Redis~6.0.9, a legacy TCMalloc pageheap baseline,
+2000 \code{redis-benchmark} trials, 1,000,000 requests per trial, and a workload
+combining a five-element push with a five-element read \cite{273711}. It also
+states the CPU family and LLVM commit used for compilation. It does not specify
+the exact Linux distribution, kernel version, or THP policy for the Redis run.
+Those properties can therefore be documented locally, but not matched exactly.
 
-For a request of size $K$, Temeraire prefers hugepages whose longest
-free run is just sufficient for the request, thereby avoiding the
-unnecessary consumption of longer ranges. When multiple hugepages share
-the same longest-free-run status, the allocator prefers the fuller one,
-using allocation count as a proxy for proximity to becoming empty. The
-intuition is that a hugepage with few live allocations is more likely to
-drain naturally; disturbing it with a new allocation reduces that
-probability.
+The repository did not initially match this target. It was a useful allocator
+benchmark scaffold, but its defaults used Redis~7.2.5, compared glibc against
+open-source gperftools TCMalloc, and did not expose a clean legacy-pageheap
+versus Temeraire comparison. The first reproduction step was therefore to narrow
+and correct the claim: the artifact would reproduce the Redis case-study
+methodology only, not the paper's full evaluation.
 
-This heuristic captures the central design idea. Placement decisions are
-deliberately more conservative than a naive strategy because poor
-placement creates long-lived fragmentation, whereas careful placement
-preserves hugepage coverage and reduces subsequent TLB stalls. The
-pageheap's position outside the hot allocation path makes this additional
-reasoning affordable.
+The paper's internal allocator build is not available. The artifact therefore
+uses a historical public \code{google/tcmalloc} commit, \code{8e534f507074},
+because it still exposes the \code{want_no_hpaa} mechanism needed to disable
+the hugepage-aware path. This makes a public legacy-versus-Temeraire split
+possible, but it should not be read as byte-identical to Google's internal
+artifact.
 
-\section{Related Work}
+The public repository also does not provide ready-made shared libraries for
+Redis preloading. The setup script therefore adds a small wrapper target inside
+the cloned TCMalloc tree and builds two loadable variants. The Temeraire build
+links against \code{//tcmalloc}; the legacy build also links against
+\code{//tcmalloc:want_no_hpaa}. The benchmark harness selects the desired
+library through \code{LD_PRELOAD}.
 
-Prior work on memory allocation and huge pages divides broadly into
-allocator-side and OS-side approaches. Temeraire belongs to the former
-category: it changes object placement in user space rather than relying
-on the kernel to recover hugepage-friendly layouts after the fact.
+Runtime verification is necessary. Redis can still report
+\code{mem_allocator: libc} from its own build metadata even when the process
+allocator was replaced through \code{LD_PRELOAD}. The artifact therefore checks
+\code{/proc/$pid/maps} to confirm that the intended shared library is actually
+mapped into the Redis process.
 
-SuperMalloc is a scalable multithreaded allocator for 64-bit systems
-whose primary goals are allocation speed and scalability
-\parencite{10.1145/2754169.2754178}. It uses huge pages for very large
-allocations, but this use is narrower than Temeraire's: SuperMalloc does
-not attempt to make the general pageheap layout hugepage-aware across a
-broad range of allocation sizes, nor does it address the fragmentation
-that arises when small and medium-sized allocations interact with THP.
+The final artifact reflects several failed or revised approaches. A modern
+\code{google/tcmalloc} checkout was not a convenient starting point for this
+wrapper strategy, and an external Bazel wrapper workspace did not naturally
+inherit all TCMalloc dependencies such as Abseil. The successful path was to add
+the wrapper inside the cloned TCMalloc source tree. Visibility was another
+obstacle: the \code{want_no_hpaa} target could not be linked from an arbitrary
+external package, so the wrapper had to be placed where TCMalloc's own
+visibility rules permitted the dependency.
 
-MallocPool targets TLB efficiency through a different abstraction
-\parencite{8502619}. It preallocates a large memory region and serves
-chunks from it contiguously, allowing dynamically allocated objects to
-benefit from favorable TLB mappings. While related to Temeraire's focus
-on memory layout, MallocPool is not integrated into a general-purpose
-pageheap and does not need to balance the same combination of allocation
-sizes, release decisions, and production server workloads.
+A later validation run uncovered a symbol mismatch. The wrapper initially
+referenced background-release methods that were not present in the pinned
+historical TCMalloc revision. The shared objects built, but failed to load before
+Redis started. The fix was to resolve those methods dynamically when available,
+allowing the wrapper to load against the historical revision while preserving
+the intended behavior for newer revisions.
 
-LLAMA uses learning-based lifetime prediction for C++ server workloads
-\parencite{10.1145/3373376.3378525}. It co-locates allocations by
-predicted lifetime on the grounds that huge pages are easier to release
-when all resident objects have compatible lifetimes. Mixing short-lived
-and long-lived objects on the same hugepage makes that page difficult to
-reclaim. Temeraire targets a related problem without lifetime prediction,
-relying instead on online placement heuristics, principally
-longest-free-range information and allocation count, that are available
-at allocation time without profiling.
+Compiler matching also proved more expensive than it first looked. The paper
+mentions LLVM commit \code{cd442157cf} and \code{-O3}. Matching that statement
+required a local LLVM/clang toolchain, then using it for Redis, gperftools, and
+the Bazel-based TCMalloc wrapper build. Later metadata confirmed use of a local
+LLVM~13.0.0 build from the longer \code{cd442157cf} commit. One older manifest
+still marked the exact LLVM path as disabled, so the compiler metadata is treated
+as authoritative.
 
-On the OS side, Ingens and HawkEye manage huge pages from the kernel
-\parencite{10.5555/3026877.3026931,10.1145/3297858.3304064}. These
-systems improve hugepage allocation, distribution, or reclamation without
-modifying the application allocator, making them complementary to
-Temeraire rather than competing with it. Kernel-level management is
-constrained by the virtual memory layout exposed from user space: if the
-allocator scatters live objects across hugepage-sized regions, the kernel
-faces fragmentation and memory pressure regardless of its own policies.
+The most important methodological difficulty was THP. Initial long runs under
+WSL2/Docker with THP in \code{madvise} mode recorded \code{AnonHugePages: 0 kB}
+for Redis. These runs looked like controlled allocator comparisons, but they did
+not provide evidence that the hugepage mechanism was active. The harness was
+therefore extended to record THP settings and periodic \code{smaps_rollup}
+snapshots, and the final paper-closer runs set THP to \code{always} before
+benchmarking.
 
-Taken together, these approaches illustrate why huge pages are attractive
-but difficult to exploit reliably. Temeraire's contribution is to make
-hugepage coverage an explicit objective inside a production allocator
-backend, packing some hugepages densely while allowing others to drain to
-the point where release is worthwhile.
+\section{Methodology}
+\label{sec:methodology}
 
-\section{Original Evaluation Methodology}
+The final workflow has four stages: build the container, set up pinned sources,
+verify allocator preload, and run the paper-closer Redis benchmark.
 
-The original paper evaluates Temeraire at several levels of granularity.
-Application-level results cover throughput, latency, memory usage,
-instructions per cycle, TLB-related stalls, and allocation overhead for
-individual production workloads. A Redis case study provides a more
-accessible comparison because Redis is open-source and its workload can
-be described precisely. Beyond these application experiments, the authors
-report a controlled fleet experiment and longitudinal data from a
-production rollout.
+The artifact contains two benchmark paths. The direct Redis script is mainly
+useful for smoke tests, allocator-preload validation, and exploratory local
+measurements. The final reported results use the paper-closer script. That
+orchestration fixes the Redis workload to the paper-shaped configuration,
+separates release-off and release-on runs, records known deviations and allocator
+order, supports balanced reruns, and runs after THP is set to \code{always}. Thus,
+the direct path validates that the artifact works, while the paper-closer path
+defines the runs used for comparison with the paper.
 
-These levels answer distinct questions. The Redis case study asks whether
-the allocator change affects a concrete, publicly available application
-under controlled benchmark conditions. The fleet experiment and rollout
-ask whether hugepage-aware allocation improves aggregate efficiency
-across diverse warehouse-scale workloads. Only the former is amenable to
-external reproduction, and this artifact targets it exclusively.
-
-The paper reports that the Redis experiment used Redis~6.0.9 and
-compared Temeraire with TCMalloc's legacy pageheap across repeated
-\texttt{redis-benchmark} trials. Each trial issued 1,000,000 requests
-combining a five-element push and a five-element read. These parameters
-are sufficiently explicit to form the basis of a local reproduction
-attempt.
-
-\section{Reproduction Scope}
-
-This artifact reproduces only the Redis case study. The fleet-scale
-results from the paper rely on Google's internal workload diversity,
-telemetry infrastructure, and production hardware, none of which are
-publicly accessible. The benchmark can therefore characterize how the
-Redis workload behaves on the tested machine under two allocator
-configurations; it cannot confirm the paper's aggregate efficiency
-claims, nor is it intended to.
-
-\section{Artifact Design}
-
-The repository is organized around a Docker container that provides a
-Linux environment with compiler tools, Redis tooling, \texttt{perf}, and
-the required build dependencies. The host directory is mounted into the
-container so that raw outputs remain available in the repository tree
-after each run.
-
-The setup script pins all relevant public source versions:
-
-\begin{itemize}
-  \item Redis \texttt{6.0.9};
-  \item \texttt{gperftools-2.16}, used only as an optional side
-        baseline;
-  \item public \texttt{google/tcmalloc} commit \texttt{8e534f507074}.
-\end{itemize}
-
-The selected TCMalloc revision is a practical approximation. It still
-exposes the \texttt{want\_no\_hpaa} mechanism needed to build a
-legacy-pageheap variant, but the public repository does not provide two
-ready-to-preload shared libraries for this experiment. Since the
-benchmark switches allocator modes through \texttt{LD\_PRELOAD}, both
-configurations must be packaged as loadable shared objects.
-
-To that end, the setup adds a small wrapper target inside the cloned
-TCMalloc tree. The wrapper contributes no allocator logic; it only
-provides the linkage needed for two shared libraries. One variant links
-against \path{//tcmalloc}. The legacy variant also links against
-\path{//tcmalloc:want_no_hpaa}. The benchmark scripts then select
-\path{libtcmalloc_temeraire.so} or \path{libtcmalloc_legacy.so} at
-runtime through \path{LD_PRELOAD}.
-
-This arrangement should not be read as a reconstruction of Google's
-internal allocator artifact. It is a public-code comparison that
-preserves the legacy-versus-hugepage-aware distinction at a level
-sufficient for a local Redis experiment.
-
-\section{Reproduction Methodology}
-
-The main workflow is:
+In compact form, the working command sequence is:
 
 \begin{lstlisting}[style=commandstyle]
 docker compose build
-docker compose run --rm temeraire-dev bash -lc \
-  "./scripts/setup_env.sh"
-docker compose run --rm temeraire-dev bash -lc \
-  "./scripts/check_allocator_preload.sh"
-docker compose run --rm temeraire-dev bash -lc \
-  "./scripts/collect_system_info.sh"
-docker compose run --rm temeraire-dev bash -lc \
-  "./scripts/run_redis_benchmark.sh legacy"
-docker compose run --rm temeraire-dev bash -lc \
-  "./scripts/run_redis_benchmark.sh temeraire"
+docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
+docker compose run --rm temeraire-dev bash -lc "./scripts/check_allocator_preload.sh"
+docker compose run --rm temeraire-dev bash -lc "echo always > /sys/kernel/mm/transparent_hugepage/enabled && echo always > /sys/kernel/mm/transparent_hugepage/defrag"
+docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh"
 \end{lstlisting}
 
-For the final paper comparison, the repository also provides a
-paper-closer orchestration path:
-
-\begin{lstlisting}[style=commandstyle]
-docker compose run --rm temeraire-dev bash -lc \
-  "echo always > /sys/kernel/mm/transparent_hugepage/enabled"
-docker compose run --rm temeraire-dev bash -lc \
-  "echo always > /sys/kernel/mm/transparent_hugepage/defrag"
-docker compose run --rm temeraire-dev bash -lc \
-  "./scripts/run_paper_closer_redis_experiment.sh"
-\end{lstlisting}
-
-Repeated paper-closer runs can use a balanced allocator order:
-
-\begin{lstlisting}[style=commandstyle]
-docker compose run --rm temeraire-dev bash -lc \
-  "./scripts/run_paper_closer_redis_experiment.sh --allocator-order balanced"
-\end{lstlisting}
-
-This alternates which allocator is measured first across repeated runs and
-records the effective order in the manifest. It was added because the expected
-Redis effect is below one percent, so a fixed allocator order can make host
-drift harder to separate from allocator behavior.
-
-The benchmark script starts Redis, selects the allocator mode, records
-memory state, and executes repeated benchmark trials. Each trial flushes
-the database and then performs two operations:
+The paper-closer script runs Redis~6.0.9 with 2000 trials, 1,000,000 requests
+per trial, 50 clients, and pipeline depth~16. Each trial flushes the database
+and then benchmarks two operations:
 
 \begin{itemize}
-  \item \texttt{LPUSH benchmark:list v1 v2 v3 v4 v5};
-  \item \texttt{LRANGE benchmark:list 0 4}.
+\item \code{LPUSH benchmark:list v1 v2 v3 v4 v5};
+\item \code{LRANGE benchmark:list 0 4}.
 \end{itemize}
 
-The default configuration follows the paper-shaped Redis workload: 2000
-trials, 1,000,000 requests per trial, 50 clients, and pipeline depth~16.
-The paper-closer script runs this workload in two modes, periodic
-release off and periodic release on, to match the two Redis rows in
-Table~1 of Hunter et al.: \textit{Redis\textsuperscript{\textdagger}}
-(periodic release disabled) and \textit{Redis} (periodic release
-enabled). Results from the optional smoke-test mode, which reduces trial
-and request counts for environment validation, must not be compared
-against the paper.
+The script records software versions, CPU information, kernel and OS metadata,
+THP settings, Redis version, TCMalloc commit, compiler metadata, allocator
+artifacts, raw benchmark output, and memory snapshots. Balanced reruns alternate
+which allocator runs first so that a sub-one-percent signal is less likely to be
+confused with fixed-order host drift.
 
-Reproducibility metadata is collected prior to each benchmark run,
-covering kernel version, OS release, CPU model, memory summary, THP
-settings, Redis version, TCMalloc commit, and allocator artifacts. The
-allocator preload check is particularly important because Redis may
-report \texttt{mem\_allocator:~libc} even when \texttt{LD\_PRELOAD} has
-substituted a different allocator at the process level.
+The primary metric is throughput in requests per second from
+\code{redis-benchmark}. LPUSH and LRANGE are collapsed into a combined
+push-plus-read rate using the harmonic mean
+\[
+  \frac{2}{1/r_{\mathrm{LPUSH}} + 1/r_{\mathrm{LRANGE}}}.
+\]
+This treats the two throughputs as rates for sequential operations and keeps the
+local comparison structurally aligned with the paper's single Redis delta per
+release mode.
 
-The paper-closer rerun also confirmed that the LLVM toolchain path was
-exercised correctly: Redis and the allocator wrapper were compiled
-against a locally built LLVM~13.0.0 from commit
-\texttt{cd442157cff4aad209ae532cbf031abbe10bc1df}. This closes one
-methodological gap relative to the paper, though differences in host
-hardware, hypervisor, and kernel behavior remain unavoidable.
-
-A further complication arose during the initial paper-closer attempts.
-With the host in THP \texttt{madvise} mode under WSL2, process memory
-summaries showed no hugepage-backed anonymous memory throughout the
-entire run. The final rerun therefore set the shared WSL2/Docker THP
-policy to \texttt{always} before launching the benchmark, and added
-periodic \texttt{smaps\_rollup} sampling so that hugepage activity could
-be observed mid-run rather than only in pre- and post-run snapshots.
-
-The primary measured quantity is throughput in requests per second as
-reported by \texttt{redis-benchmark}. Raw benchmark logs are preserved
-in the artifact so that per-trial variance can be inspected directly.
-Where \texttt{perf} is available on the host, it can additionally
-collect hardware events including cycles, instructions, page faults, and
-TLB-related counters. These must be interpreted cautiously, however,
-given the effects of virtualization, container permissions, and counter
-multiplexing on reported values.
+The hypothesis is deliberately modest. Redis creates a stream of small
+allocations. Under Temeraire, these allocations are subject to
+\HugeFillerLabel{}'s placement heuristic; under the legacy pageheap, they are
+not. If Temeraire improves hugepage coverage for this workload, Redis should
+show a small positive throughput delta. The effect is expected to be clearest
+with periodic release disabled, because release-on adds interaction with
+background memory return and can disrupt or mask the placement signal.
 
 \section{Results}
+\label{sec:results}
 
-The final analysis uses only runs that exercised the intended THP path. An
-earlier paper-closer attempt, performed while the WSL2 kernel exposed THP in
-\texttt{madvise} mode, recorded \texttt{AnonHugePages: 0 kB} for Redis and is
-therefore treated as workflow validation rather than as paper-comparable data.
-After switching the shared WSL2/Docker THP policy to \texttt{always}, every
-reported run showed non-zero \texttt{AnonHugePages} in Redis process snapshots.
-
-For each Redis run, the artifact records separate LPUSH and LRANGE throughput.
-The comparison below uses a combined push-plus-read metric. For each trial it
-computes
-\[
-  2 / (1/r_{\text{LPUSH}} + 1/r_{\text{LRANGE}})
-\]
-and then averages across trials. This harmonic-mean formulation avoids treating
-the two operations as independent paper results, since Hunter et al.\ report
-only one Redis throughput delta per release mode.
+Only runs produced through the paper-closer workflow are considered
+paper-comparable and included in the analysis below. Earlier direct-path runs
+are treated as environment validation and workflow development artifacts.
+Likewise, earlier paper-closer attempts with \code{AnonHugePages: 0 kB} are
+useful workflow validation, but not evidence for the hugepage mechanism. After
+THP was set to \code{always}, the reported runs showed non-zero
+\code{AnonHugePages} in Redis snapshots.
 
 \begin{table}[ht]
-  \caption{Run-level Temeraire throughput deltas in THP-enabled runs. L first
-           and T first denote whether legacy or Temeraire ran first within the
-           allocator pair. off/on denote periodic release disabled/enabled.}
-  \label{tab:run-deltas}
-  \footnotesize
-  \begin{tabular}{@{}lccc@{}}
-    \toprule
-    Run & Order & off & on \\
-    \midrule
-    fixed-order & L first & $+1.88\%$ & $+0.27\%$ \\
-    balanced 1 & L first & $+0.44\%$ & $+0.12\%$ \\
-    balanced 2 & T first & $+0.48\%$ & $+0.38\%$ \\
-    balanced 3 & L first & $-0.76\%$ & $-2.37\%$ \\
-    balanced 4 & T first & $+3.51\%$ & $-12.07\%$ \\
-    targeted on & T first & -- & $+0.12\%$ \\
-    \bottomrule
-  \end{tabular}
+\caption{Run-level Temeraire throughput deltas in THP-enabled runs. L first
+and T first denote whether legacy or Temeraire ran first within the allocator
+pair. Off and on denote periodic release disabled and enabled.}
+\label{tab:run-deltas}
+\footnotesize
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Run & Order & Off & On \\
+\midrule
+fixed-order & L first & $+1.88\%$ & $+0.27\%$ \\
+balanced 1  & L first & $+0.44\%$ & $+0.12\%$ \\
+balanced 2  & T first & $+0.48\%$ & $+0.38\%$ \\
+balanced 3  & L first & $-0.76\%$ & $-2.37\%$ \\
+balanced 4  & T first & $+3.51\%$ & $-12.07\%$ \\
+targeted on & T first & --        & $+0.12\%$ \\
+\bottomrule
+\end{tabular}
 \end{table}
 
-Table~\ref{tab:run-deltas} shows that release-off has the clearer local signal:
-four of five THP-enabled full runs favor Temeraire, and the median release-off
-delta is $+0.48\%$. This is below, but close to, the paper's
-$+0.75\%$ Redis\textsuperscript{\textdagger} result. The release-on case is
-weaker. Most release-on runs are near flat or modestly positive, but one
-balanced run produced a large negative result.
+Table~\ref{tab:run-deltas} shows the main pattern. Release-off is the clearest
+signal: four of five full THP-enabled runs favor Temeraire, and the median delta
+is $+0.48\%$, compared with the paper's $+0.75\%$
+Redis\textsuperscript{\textdagger} result. This reproduces the direction and
+rough small-effect magnitude, not the exact value.
 
-That large negative release-on result was investigated separately. The
-Temeraire run from balanced rerun~4 had correct metadata, background release
-enabled, active THP, stable RSS, stable \texttt{AnonHugePages}, and a clean
-Redis log. Its slowdown was visible from the first 250-trial window and only
-partially recovered at the end of the run, while the paired legacy run was
-stable. A targeted release-on-only rerun with Temeraire first then returned to
-$+0.12\%$ combined throughput: LPUSH was $-0.04\%$ and LRANGE was $+0.37\%$.
-This supports treating the $-12.07\%$ release-on result as a transient
-single-host outlier rather than as representative allocator behavior.
+Release-on is more ambiguous. Most runs are near flat or modestly positive, but
+balanced rerun~4 produced a $-12.07\%$ Temeraire slowdown. The run had correct
+metadata, release enabled, active THP, stable RSS, and stable anonymous hugepage
+counts, but the artifact did not capture enough system-wide telemetry to assign
+the slowdown confidently to the allocator, the VM, scheduling, I/O, or hugepage
+reclaim. A targeted release-on rerun with Temeraire first returned $+0.12\%$,
+with LPUSH at $-0.04\%$ and LRANGE at $+0.37\%$. The outlier is therefore
+treated as transient single-host behavior rather than a stable allocator effect.
 
 \begin{table}[ht]
-  \caption{Paper comparison and local interpretation.}
-  \label{tab:paper-compare}
-  \footnotesize
-  \begin{tabular}{@{}lccp{0.34\columnwidth}@{}}
-    \toprule
-    Mode & Paper & Local summary & Interpretation \\
-    \midrule
-    off & $+0.75\%$ & median $+0.48\%$ & recurring positive signal \\
-    on  & $+0.44\%$ & about $0$ to $+0.38\%$ & small and noisy \\
-    \bottomrule
-  \end{tabular}
+\caption{Paper comparison and local interpretation.}
+\label{tab:paper-compare}
+\footnotesize
+\begin{tabular}{@{}lccp{0.34\columnwidth}@{}}
+\toprule
+Mode & Paper & Local summary & Interpretation \\
+\midrule
+off & $+0.75\%$ & median $+0.48\%$ & recurring positive signal \\
+on  & $+0.44\%$ & about $0\%$ to $+0.38\%$ & small and noisy \\
+\bottomrule
+\end{tabular}
 \end{table}
 
-The result is therefore mixed but informative. The artifact does not reproduce
-the exact Redis Table~1 statistics. It does, however, repeatedly put the local
-Redis comparison in the paper's small-effect regime once THP is actually
-active. Release-off is the stronger reproduction signal. Release-on remains
-close to the paper's reported scale in most runs, but the single-host setup is
-noisy enough that the effect should be described as near-flat rather than
-robustly reproduced.
+Overall, the artifact repeatedly places the Redis comparison in the paper's
+small-effect regime once THP is active. It does not robustly reproduce the exact
+Table~1 statistics, especially in the release-on condition.
 
-\section{Discussion}
+\section{Discussion and Related Work}
+\label{sec:discussion-related}
 
-The strongest aspect of this artifact is procedural reproducibility. It
-records exact public source versions, benchmark parameters, allocator
-mode, raw outputs, and system context, making the experiment inspectable
-and straightforward to rerun on different hardware. On the tested
-WSL2/i7-10700K host, the THP-enabled runs reproduced the underlying
-mechanism more convincingly than prior attempts: mid-run samples and
-end-state summaries confirm hugepage-backed anonymous memory. The
-balanced repetitions also make the result more scientifically useful
-than a single fixed-order run, because they expose the run-to-run
-variation that matters when the expected Redis effect is below one
-percent.
+Methodologically the redis experiment was successfully reproduced on local hardware as close as possible: the allocator
+split had to be reconstructed from public code, preload had to be verified at
+runtime, the compiler path had to be documented, and THP activity had to be
+observed rather than assumed.
 
-The principal limitation is environmental fidelity. The original Redis
-experiments were conducted on Intel Skylake Xeon servers using a
-specific LLVM revision and Google's internal TCMalloc build environment.
-A Docker container on a consumer desktop cannot replicate the same kernel
-behavior, THP availability, physical memory fragmentation profile, NUMA
-topology, or hardware counter semantics. These factors are particularly
-consequential for hugepage experiments, since hugepage availability is a
-system-wide property that the benchmark process does not control.
+The release-off result supports the central mechanism. A recurring positive
+signal in the same sub-one-percent range suggests that Temeraire's Redis effect
+is not obviously exclusive to Google's production environment. However, the
+result still comes from a consumer i7-10700K host under Docker and WSL2, not
+from the paper's Skylake Xeon server environment.
 
-Source identity is a related concern. The public TCMalloc commit used
-here is a historical approximation chosen because it still admits a clean
-legacy-versus-Temeraire split; it should not be taken as evidence that
-the internal artifact from the paper was reconstructed. The public
-TCMalloc repository has evolved substantially beyond the OSDI~2021
-codebase, and the two have diverged in ways that are difficult to
-characterize from the outside.
+The release-on result is less conclusive. Most runs are compatible with a small
+positive effect, but the $-12.07\%$ outlier shows that a single-host
+reproduction can be dominated by transient conditions when the signal is below
+one percent. Future reruns should collect \code{/proc/vmstat} hugepage counters,
+load average, and I/O activity throughout the benchmark.
 
-Despite these limitations, the reproduction serves a concrete purpose.
-It translates the paper's Redis methodology into explicit, runnable
-steps and provides a basis for discussing which claims in systems papers
-are verifiable from public artifacts and which depend on inaccessible
-production context. More concretely, it makes the paper's central
-technical claim testable at small scale: allocator placement decisions
-can affect application performance through channels beyond the direct
-cost of \texttt{malloc} and \texttt{free}.
+The main limitation remains environmental fidelity. The paper specifies the
+Redis version, benchmark shape, CPU family, LLVM commit, and optimization level,
+but not the exact Linux distribution, kernel version, or THP policy for the
+Redis experiment. Docker, WSL2, consumer hardware, physical memory
+fragmentation, NUMA behavior, and hardware counter semantics can all affect
+hugepage experiments. The public TCMalloc commit is also only a historical
+approximation of the paper's internal allocator artifact.
 
-The main empirical lesson from the repeated runs is that local Redis
-results should be reported as a distribution, not as a single definitive
-number. Release-off repeatedly moves in Temeraire's favor and is close to
-the paper's reported scale. Release-on is more ambiguous: most runs are
-near flat or modestly positive, but the targeted rerun was needed to show
-that one very negative result was not reproducible. This is still useful
-evidence, but it is evidence about a noisy single-host approximation,
-not a confirmation of the paper's exact production-era measurements.
+Temeraire is one point in a broader design space of hugepage-aware memory
+management. SuperMalloc uses huge pages for very large allocations but does not
+make the general pageheap layout hugepage-aware \cite{10.1145/2754169.2754178}.
+MallocPool improves TLB behavior by serving objects from a contiguous
+preallocated region, but it is not a general-purpose pageheap replacement
+\cite{8502619}. LLAMA uses lifetime prediction to group allocations that are
+likely to die together, whereas Temeraire uses online placement heuristics
+without profiling \cite{10.1145/3373376.3378525}. Kernel-level systems such as
+Ingens and HawkEye manage huge pages from the OS side and are complementary to
+allocator-side placement
+\cite{10.5555/3026877.3026931,10.1145/3297858.3304064}.
 
 \section{Conclusion}
+\label{sec:conclusion}
 
-This artifact provides a narrow local reproduction path for the
-Temeraire paper, deliberately scoped to the Redis case study. It does
-not attempt to reproduce the fleet-scale results, which depend on
-Google's internal workload diversity and infrastructure. Its purpose is
-instead to make the underlying mechanism testable in a controlled,
-public setting.
+This report should be read as a reproduction of the Redis artefact, not simply as a benchmark
+summary. The original repository was not yet a Temeraire Redis reproduction. It
+had to be narrowed to the public Redis case study and adapted to Redis~6.0.9. It
+also had to shift from glibc and gperftools comparisons to legacy TCMalloc versus
+Temeraire, with historical TCMalloc builds, wrapper libraries, preload checks,
+compiler metadata, THP controls, and memory instrumentation.
 
-The experiment should be read as local evidence about one public
-workload under two allocator configurations, not as a confirmation of
-the paper's production claims. Under THP-enabled conditions, release-off
-shows a recurring positive Temeraire signal in the same small-effect
-range as the paper. Release-on is smaller and noisier; after one severe
-outlier was rerun directly, the targeted result returned to a near-flat
-$+0.12\%$. The final claim is therefore intentionally limited: the
-artifact reproduces the Redis methodology and often lands in the paper's
-effect regime, but it does not robustly reproduce the exact Redis
-Table~1 statistics.
-
-Its broader contribution is to make the mechanism concrete: allocation
-affects performance not only through the speed of \texttt{malloc} and
-\texttt{free}, but also through the memory layout it produces. Huge
-pages can reduce TLB pressure, but they make fragmentation more
-consequential. Temeraire addresses this by packing allocations so that
-some hugepages remain dense while others can drain to the point where
-release is worthwhile, a design goal that even a local Docker experiment
-can begin to probe.
+After those changes, the release-off Redis result falls into the same
+small-effect regime as the paper: a local median of $+0.48\%$ against the
+paper's $+0.75\%$. Release-on remains small and noisy, and one large negative
+outlier required a targeted rerun. The artifact therefore provides local
+evidence that the Redis mechanism is recoverable with public code under
+appropriate THP conditions. It does not validate Google's fleet-scale claims or
+reproduce the exact production-era measurements.
 
 \clearpage
+\hbadness=10000
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{temeraire-seminar-report}
 
