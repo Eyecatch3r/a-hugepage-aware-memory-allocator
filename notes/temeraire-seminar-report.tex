@@ -3,12 +3,12 @@
 \acmConference{Master-Seminar}{Aktuelle Trends in der Systemsoftware}{SoSe 2026}
 
 \settopmatter{
-printacmref=true,
+printacmref=false,
 printccs=false,
 printfolios=false
 }
 \renewcommand\footnotetextcopyrightpermission[1]{}
-
+\usepackage{microtype}
 \usepackage{booktabs}
 \usepackage{array}
 \usepackage{xcolor}
@@ -165,9 +165,6 @@ not as a validation of the paper's fleet-scale claims.
 
 \ccsdesc[500]{Software and its engineering~Memory management}
 \ccsdesc[300]{Computer systems organization~Reliability}
-
-\keywords{memory allocation, huge pages, TCMalloc, Temeraire, Redis,
-reproducibility}
 
 \maketitle
 
