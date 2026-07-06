@@ -171,10 +171,10 @@ not as a validation of the paper's fleet-scale claims.
 \section{Introduction}
 
 Memory allocation is often treated as a local implementation detail of C and
-C++ programs. Temeraire's premise is broader: allocator decisions also shape
-where objects land in memory, whether huge pages remain usable, and how much
-address-translation work the processor must perform later. Hunter et al. argue
-that allocator design can therefore affect fleet efficiency, not just the direct
+C++ programs. Temeraire starts from a different observation: allocator decisions
+shape where objects land in memory, whether huge pages remain usable, and how
+much address-translation work the processor must perform later. Hunter et al.
+therefore connect allocator design to fleet efficiency as well as the direct
 cost of \code{malloc} and \code{free} \cite{273711}.
 
 A full reproduction of the Temeraire paper is outside the scope of this seminar
@@ -186,10 +186,10 @@ enough benchmark detail to support a local reproduction attempt.
 
 The goal is not to reconstruct Google's internal allocator binary. Instead, the
 artifact asks a narrower question: can the Redis comparison be approximated with
-public code closely enough to observe the same small-effect regime? Answering
-that required more than running a benchmark. The repository had to be reshaped,
-the allocator comparison had to be reconstructed, and the local hugepage path had
-to be verified explicitly.
+public code closely enough to observe the same small-effect regime? That question
+required more than running a benchmark. The repository had to be reshaped, the
+allocator comparison had to be reconstructed, and the local hugepage path had to
+be verified explicitly.
 
 \section{Background and Temeraire Mechanism}
 \label{sec:background-temeraire}
@@ -214,7 +214,6 @@ objects.
 \node[labelbox, anchor=west] at (-0.35,2.45) {After allocation};
 \node[labelbox, anchor=west] at (-0.35,0.95) {After frees};
 
-```
 \foreach \i in {0,...,7} { \node[used] at (\i,1.75) {}; }
 
 \node[used] at (0,0.25) {};
@@ -234,7 +233,6 @@ objects.
 \node[labelbox, anchor=west] at (2.7,-1.25) {used};
 \node[free, minimum width=0.45cm, minimum height=0.32cm] at (4.0,-1.25) {};
 \node[labelbox, anchor=west] at (4.3,-1.25) {free};
-```
 
 \end{tikzpicture}
 \caption{Fragmentation inside a hugepage-sized region. Free memory exists,
@@ -290,7 +288,6 @@ layer rather than replacing the whole allocator.
   inner sep=0.20cm,
   label={[labelbox]below:Temeraire changes this backend}
 ] {};
-```
 
 \end{tikzpicture}
 \caption{Simplified TCMalloc hierarchy. Temeraire changes the backend
@@ -315,7 +312,6 @@ node distance=0.8cm and 1.2cm,
 every node/.style={align=center}
 ]
 
-```
 \tikzset{
   allocatorbox/.style={
     draw=blue!60!black,
@@ -400,7 +396,6 @@ every node/.style={align=center}
 \draw[solidflow] (medreq.north west) -- (cache.south east);
 \draw[dottedflow] (medreq.north) --
   node[right, textlabel, xshift=0.08cm] {\emph{sometimes}} (region.south);
-```
 
 \end{tikzpicture}%
 }
@@ -627,11 +622,11 @@ pair. Off and on denote periodic release disabled and enabled.}
 \toprule
 Run & Order & Off & On \\
 \midrule
-fixed-order & L first & $+1.88\%$ & $+0.27\%$ \\
-balanced 1  & L first & $+0.44\%$ & $+0.12\%$ \\
+fixed-order & L first & $+1.88\%$ & $+0.26\%$ \\
+balanced 1  & L first & $+0.43\%$ & $+0.12\%$ \\
 balanced 2  & T first & $+0.48\%$ & $+0.38\%$ \\
-balanced 3  & L first & $-0.76\%$ & $-2.37\%$ \\
-balanced 4  & T first & $+3.51\%$ & $-12.07\%$ \\
+balanced 3  & L first & $-0.76\%$ & $-2.34\%$ \\
+balanced 4  & T first & $+3.46\%$ & $-12.02\%$ \\
 targeted on & T first & --        & $+0.12\%$ \\
 \bottomrule
 \end{tabular}
@@ -644,7 +639,7 @@ Redis\textsuperscript{\textdagger} result. This reproduces the direction and
 rough small-effect magnitude, not the exact value.
 
 Release-on is more ambiguous. Most runs are near flat or modestly positive, but
-balanced rerun~4 produced a $-12.07\%$ Temeraire slowdown. The run had correct
+balanced rerun~4 produced a $-12.02\%$ Temeraire slowdown. The run had correct
 metadata, release enabled, active THP, stable RSS, and stable anonymous hugepage
 counts, but the artifact did not capture enough system-wide telemetry to assign
 the slowdown confidently to the allocator, the VM, scheduling, I/O, or hugepage
@@ -666,26 +661,26 @@ on  & $+0.44\%$ & about $0\%$ to $+0.38\%$ & small and noisy \\
 \end{tabular}
 \end{table}
 
-Overall, the artifact repeatedly places the Redis comparison in the paper's
-small-effect regime once THP is active. It does not robustly reproduce the exact
-Table~1 statistics, especially in the release-on condition.
+Overall, once THP is active, the Redis comparison repeatedly lands in the
+paper's small-effect regime. It does not robustly reproduce the exact Table~1
+statistics, especially in the release-on condition.
 
 \section{Discussion and Related Work}
 \label{sec:discussion-related}
 
-Methodologically the redis experiment was successfully reproduced on local hardware as close as possible: the allocator
-split had to be reconstructed from public code, preload had to be verified at
-runtime, the compiler path had to be documented, and THP activity had to be
-observed rather than assumed.
+At the methodology level, the Redis experiment was reconstructed locally as far
+as the public artifact allowed: the allocator split had to be rebuilt from
+public code, preload had to be verified at runtime, the compiler path had to be
+documented, and THP activity had to be observed rather than assumed.
 
-The release-off result supports the central mechanism. A recurring positive
-signal in the same sub-one-percent range suggests that Temeraire's Redis effect
-is not obviously exclusive to Google's production environment. However, the
-result still comes from a consumer i7-10700K host under Docker and WSL2, not
-from the paper's Skylake Xeon server environment.
+The release-off result is consistent with the mechanism claimed in the paper. A
+recurring positive signal in the same sub-one-percent range suggests that the
+Redis effect is not obviously limited to Google's production environment.
+However, the result still comes from a consumer i7-10700K host under Docker and
+WSL2, not from the paper's Skylake Xeon server environment.
 
 The release-on result is less conclusive. Most runs are compatible with a small
-positive effect, but the $-12.07\%$ outlier shows that a single-host
+positive effect, but the $-12.02\%$ outlier shows that a single-host
 reproduction can be dominated by transient conditions when the signal is below
 one percent. Future reruns should collect \code{/proc/vmstat} hugepage counters,
 load average, and I/O activity throughout the benchmark.
@@ -698,9 +693,9 @@ fragmentation, NUMA behavior, and hardware counter semantics can all affect
 hugepage experiments. The public TCMalloc commit is also only a historical
 approximation of the paper's internal allocator artifact.
 
-Temeraire is one point in a broader design space of hugepage-aware memory
-management. SuperMalloc uses huge pages for very large allocations but does not
-make the general pageheap layout hugepage-aware \cite{10.1145/2754169.2754178}.
+Temeraire sits alongside other memory-management work on huge pages.
+SuperMalloc uses huge pages for very large allocations but does not make the
+general pageheap layout hugepage-aware \cite{10.1145/2754169.2754178}.
 MallocPool improves TLB behavior by serving objects from a contiguous
 preallocated region, but it is not a general-purpose pageheap replacement
 \cite{8502619}. LLAMA uses lifetime prediction to group allocations that are
@@ -713,20 +708,20 @@ allocator-side placement
 \section{Conclusion}
 \label{sec:conclusion}
 
-This report should be read as a reproduction of the Redis artefact, not simply as a benchmark
-summary. The original repository was not yet a Temeraire Redis reproduction. It
-had to be narrowed to the public Redis case study and adapted to Redis~6.0.9. It
-also had to shift from glibc and gperftools comparisons to legacy TCMalloc versus
+This report should be read primarily as a reproduction of the Redis artefact.
+The original repository was not yet a Temeraire Redis reproduction. It had to be
+narrowed to the public Redis case study and adapted to Redis~6.0.9. It also had
+to shift from glibc and gperftools comparisons to legacy TCMalloc versus
 Temeraire, with historical TCMalloc builds, wrapper libraries, preload checks,
 compiler metadata, THP controls, and memory instrumentation.
 
 After those changes, the release-off Redis result falls into the same
 small-effect regime as the paper: a local median of $+0.48\%$ against the
 paper's $+0.75\%$. Release-on remains small and noisy, and one large negative
-outlier required a targeted rerun. The artifact therefore provides local
-evidence that the Redis mechanism is recoverable with public code under
-appropriate THP conditions. It does not validate Google's fleet-scale claims or
-reproduce the exact production-era measurements.
+outlier required a targeted rerun. The artifact shows that the Redis mechanism
+can be recovered with public code under appropriate THP conditions. It does not
+validate Google's fleet-scale claims or reproduce the exact production-era
+measurements.
 
 \clearpage
 \hbadness=10000
