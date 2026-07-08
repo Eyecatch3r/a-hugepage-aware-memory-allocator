@@ -126,21 +126,21 @@ make -j"$(nproc)"
 make install
 popd >/dev/null
 
-cp -f "${ROOT_DIR}/docker/tcmalloc_bazel_wrapper/wrapper.cc" "${SRC_DIR}/google-tcmalloc/tcmalloc/testing/codex_wrapper.cc"
+cp -f "${ROOT_DIR}/docker/tcmalloc_bazel_wrapper/wrapper.cc" "${SRC_DIR}/google-tcmalloc/tcmalloc/testing/temeraire_wrapper.cc"
 
-if ! grep -q 'codex_libtcmalloc_temeraire.so' "${SRC_DIR}/google-tcmalloc/tcmalloc/testing/BUILD"; then
+if ! grep -q 'temeraire_libtcmalloc_temeraire.so' "${SRC_DIR}/google-tcmalloc/tcmalloc/testing/BUILD"; then
   cat >> "${SRC_DIR}/google-tcmalloc/tcmalloc/testing/BUILD" <<'EOF'
 
 cc_binary(
-    name = "codex_libtcmalloc_temeraire.so",
-    srcs = ["codex_wrapper.cc"],
+    name = "temeraire_libtcmalloc_temeraire.so",
+    srcs = ["temeraire_wrapper.cc"],
     linkshared = 1,
     malloc = "//tcmalloc",
 )
 
 cc_binary(
-    name = "codex_libtcmalloc_legacy.so",
-    srcs = ["codex_wrapper.cc"],
+    name = "temeraire_libtcmalloc_legacy.so",
+    srcs = ["temeraire_wrapper.cc"],
     linkshared = 1,
     malloc = "//tcmalloc",
     deps = ["//tcmalloc:want_no_hpaa"],
@@ -158,11 +158,11 @@ USE_BAZEL_VERSION="${USE_BAZEL_VERSION:-4.2.2}" bazelisk build \
   --repo_env=CXX="${LLVM_CXX}" \
   --action_env=CC="${LLVM_CC}" \
   --action_env=CXX="${LLVM_CXX}" \
-  //tcmalloc/testing:codex_libtcmalloc_temeraire.so \
-  //tcmalloc/testing:codex_libtcmalloc_legacy.so
+  //tcmalloc/testing:temeraire_libtcmalloc_temeraire.so \
+  //tcmalloc/testing:temeraire_libtcmalloc_legacy.so
 mkdir -p "${INSTALL_DIR}/google-tcmalloc/lib"
-cp -f bazel-bin/tcmalloc/testing/codex_libtcmalloc_temeraire.so "${INSTALL_DIR}/google-tcmalloc/lib/libtcmalloc_temeraire.so"
-cp -f bazel-bin/tcmalloc/testing/codex_libtcmalloc_legacy.so "${INSTALL_DIR}/google-tcmalloc/lib/libtcmalloc_legacy.so"
+cp -f bazel-bin/tcmalloc/testing/temeraire_libtcmalloc_temeraire.so "${INSTALL_DIR}/google-tcmalloc/lib/libtcmalloc_temeraire.so"
+cp -f bazel-bin/tcmalloc/testing/temeraire_libtcmalloc_legacy.so "${INSTALL_DIR}/google-tcmalloc/lib/libtcmalloc_legacy.so"
 popd >/dev/null
 
 echo "Environment setup complete."

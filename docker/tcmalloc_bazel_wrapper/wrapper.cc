@@ -17,9 +17,10 @@ bool env_enabled(const char* name) {
 }
 
 void maybe_start_background_release() {
-  if (!env_enabled("CODEX_TCMALLOC_ENABLE_BACKGROUND_RELEASE")) return;
+  if (!env_enabled("TEMERAIRE_TCMALLOC_ENABLE_BACKGROUND_RELEASE")) return;
 
-  const char* rate = std::getenv("CODEX_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS");
+  const char* rate =
+      std::getenv("TEMERAIRE_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS");
   if (rate != nullptr && rate[0] != '\0') {
     size_t bytes_per_second = std::strtoull(rate, nullptr, 10);
     void* rate_symbol = dlsym(
@@ -45,8 +46,8 @@ void maybe_start_background_release() {
   }).detach();
 }
 
-struct CodexWrapperInit {
-  CodexWrapperInit() { maybe_start_background_release(); }
+struct TemeraireWrapperInit {
+  TemeraireWrapperInit() { maybe_start_background_release(); }
 } init;
 
 }  // namespace
