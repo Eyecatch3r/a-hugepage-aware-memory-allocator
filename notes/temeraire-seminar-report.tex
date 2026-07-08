@@ -591,7 +591,11 @@ push-plus-read rate using the harmonic mean
 \]
 This treats the two throughputs as rates for sequential operations and keeps the
 local comparison structurally aligned with the paper's single Redis delta per
-release mode.
+release mode. The harmonic-mean aggregation itself is not specified in the
+paper. It is a local reconstruction choice because our public
+\code{redis-benchmark} harness records LPUSH and LRANGE as separate operation
+means, while the paper reports one Redis throughput delta for the combined
+push-five/read-five workload.
 
 The hypothesis is deliberately modest. Redis creates a stream of small
 allocations. Under Temeraire, these allocations are subject to

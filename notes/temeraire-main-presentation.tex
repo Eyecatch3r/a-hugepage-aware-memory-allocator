@@ -593,30 +593,52 @@ Hugepage-Pfad wirklich Teil der Messung.
 
 \begin{frame}{Ablauf des g\"ultigen Runs}
 \begin{center}
-\begin{tikzpicture}[node distance=0.62cm]
-  \node[box, minimum width=2.9cm] (build) {Container\\bauen};
-  \node[box, minimum width=3.0cm, right=0.62cm of build] (setup) {pinned\\Sources};
-  \node[greenbox, minimum width=3.0cm, right=0.62cm of setup] (verify) {Preload\\pr\"ufen};
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.46cm and 0.46cm]
+  \node[box, minimum width=2.55cm] (setup) {\smallcode{setup\_env.sh}\\Redis 6.0.9\\TCMalloc \smallcode{8e534f...}};
+  \node[greenbox, minimum width=2.65cm, right=of setup] (libs) {Bazel im\\TCMalloc-Tree\\2 Preload-Libs};
+  \node[box, minimum width=2.45cm, right=of libs] (preload) {\smallcode{LD\_PRELOAD}\\Legacy oder\\Temeraire};
+  \node[orangebox, minimum width=2.35cm, right=of preload] (thp) {THP auf\\\smallcode{always}\\setzen};
 
-  \node[orangebox, minimum width=3.0cm, below=0.78cm of verify] (thp) {THP\\\smallcode{always}};
-  \node[box, minimum width=3.0cm, left=0.62cm of thp] (run) {Paper-closer\\Run};
-  \node[greenbox, minimum width=3.0cm, left=0.62cm of run] (aggregate) {Deltas\\aggregieren};
+  \node[box, minimum width=2.55cm, below=0.70cm of thp] (run) {\smallcode{run\_redis}\\\smallcode{LPUSH}\\\smallcode{LRANGE}};
+  \node[greenbox, minimum width=2.65cm, left=of run] (snap) {pro Run:\\\smallcode{trials.csv}\\\smallcode{summary.csv}};
+  \node[box, minimum width=2.65cm, left=of snap] (meta) {Metadaten:\\\smallcode{manifest.txt}\\THP/Snapshots};
+  \node[greenbox, minimum width=2.55cm, left=of meta] (agg) {Matched Pair\\Legacy vs. T\\Delta};
 
-  \draw[arrow] (build) -- (setup);
-  \draw[arrow] (setup) -- (verify);
-  \draw[arrow] (verify) -- (thp);
+  \draw[arrow] (setup) -- (libs);
+  \draw[arrow] (libs) -- (preload);
+  \draw[arrow] (preload) -- (thp);
   \draw[arrow] (thp) -- (run);
-  \draw[arrow] (run) -- (aggregate);
-\end{tikzpicture}
+  \draw[arrow] (run) -- (snap);
+  \draw[arrow] (snap) -- (meta);
+  \draw[arrow] (meta) -- (agg);
+\end{tikzpicture}%
+}
 \end{center}
-\vspace{0.45em}
-\begin{itemize}
-  \item \smallcode{run\_paper\_closer\_redis\_experiment.sh} ist der zentrale Pfad
-  \item Balanced order wechselt zwischen Legacy-first und Temeraire-first
-  \item \smallcode{manifest.txt} h\"alt Redis-Version, Trials, Requests und Reihenfolge fest
-  \item pro Redis-Run entstehen \smallcode{summary.csv}, \smallcode{trials.csv}, THP- und Memory-Snapshots
-\end{itemize}
-\note{This slide ties the fixes into one repeatable command path.}
+\vspace{0.18em}
+\begin{columns}[T,totalwidth=\textwidth]
+  \begin{column}{0.48\textwidth}
+    \begin{block}{Was technisch passiert}
+      \footnotesize
+      \begin{itemize}
+        \item ein Redis-Binary, zwei TCMalloc-\smallcode{.so}s
+        \item Legacy: \smallcode{want\_no\_hpaa}; T: HPAA aktiv
+        \item \smallcode{LD\_PRELOAD} w\"ahlt pro Redis-Prozess
+      \end{itemize}
+    \end{block}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \begin{block}{Was als Ergebnis bleibt}
+      \footnotesize
+      \begin{itemize}
+        \item \smallcode{summary.csv}: LPUSH/LRANGE-Mittel
+        \item Snapshots: THP und \smallcode{AnonHugePages}
+        \item Delta nur gegen passenden Legacy-Run
+      \end{itemize}
+    \end{block}
+  \end{column}
+\end{columns}
+\note{This slide should be explained as the actual handoff chain: setup creates two preload libraries, the runner selects one library per Redis process, and the aggregator only compares matched legacy/Temeraire summaries.}
 \end{frame}
 
 \begin{frame}{Messprotokoll}

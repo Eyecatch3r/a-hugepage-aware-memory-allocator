@@ -562,13 +562,13 @@ allocator order changes. The balanced driver alternates which allocator is
 measured first within each release-mode pair.
 
 The first two balanced reruns still pointed in the paper's direction:
-approximately \texttt{+0.44\%} and \texttt{+0.48\%} for release-off, and
+approximately \texttt{+0.43\%} and \texttt{+0.48\%} for release-off, and
 approximately \texttt{+0.12\%} and \texttt{+0.38\%} for release-on. A third
 balanced rerun then produced negative deltas, approximately \texttt{-0.76\%}
-for release-off and \texttt{-2.37\%} for release-on. A fourth balanced rerun
+for release-off and \texttt{-2.34\%} for release-on. A fourth balanced rerun
 was especially mixed: release-off strongly favored Temeraire at about
-\texttt{+3.51\%}, while release-on strongly disfavored Temeraire at about
-\texttt{-12.07\%}.
+\texttt{+3.46\%}, while release-on strongly disfavored Temeraire at about
+\texttt{-12.02\%}.
 
 The fourth rerun's release-on Temeraire result is treated as an anomaly rather
 than folded silently into the final interpretation. Its Redis log contains no
@@ -594,7 +594,7 @@ range. Its combined push-plus-read delta was approximately \texttt{+0.12\%}:
 \texttt{-0.04\%} for LPUSH and \texttt{+0.37\%} for LRANGE. The Temeraire run
 was also stable across 250-trial windows, with combined throughput around
 \texttt{940--954 kRPS}. This makes the fourth balanced rerun's
-\texttt{-12.07\%} release-on result best treated as a transient outlier rather
+\texttt{-12.02\%} release-on result best treated as a transient outlier rather
 than as representative evidence that \texttt{release-on} Temeraire is
 consistently bad on this host.
 
@@ -605,11 +605,11 @@ The current working summary for later report editing is:
 \toprule
 Run & Release-off & Release-on & Note \\
 \midrule
-THP fixed-order & \texttt{+1.88\%} & \texttt{+0.27\%} & first valid THP run \\
-balanced 1 & \texttt{+0.44\%} & \texttt{+0.12\%} & legacy first \\
+THP fixed-order & \texttt{+1.88\%} & \texttt{+0.26\%} & first valid THP run \\
+balanced 1 & \texttt{+0.43\%} & \texttt{+0.12\%} & legacy first \\
 balanced 2 & \texttt{+0.48\%} & \texttt{+0.38\%} & Temeraire first \\
-balanced 3 & \texttt{-0.76\%} & \texttt{-2.37\%} & negative run \\
-balanced 4 & \texttt{+3.51\%} & \texttt{-12.07\%} & release-on outlier \\
+balanced 3 & \texttt{-0.76\%} & \texttt{-2.34\%} & negative run \\
+balanced 4 & \texttt{+3.46\%} & \texttt{-12.02\%} & release-on outlier \\
 targeted release-on & n/a & \texttt{+0.12\%} & rerun of anomaly \\
 \bottomrule
 \end{tabular}

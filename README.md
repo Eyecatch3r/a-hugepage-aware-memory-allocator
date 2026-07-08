@@ -220,18 +220,28 @@ Expected deviations include host CPU, kernel version, Transparent Huge Page (THP
 The current result set should be read as a local reproduction attempt, not as an
 exact reproduction of the Redis rows in Table 1 of the paper.
 
+Regenerate the table below from the checked-in raw summaries with:
+
+```bash
+python3 scripts/aggregate_paper_closer_results.py
+```
+
+The script combines LPUSH and LRANGE means with the harmonic mean
+`2 / (1 / LPUSH + 1 / LRANGE)`, then reports the Temeraire-over-legacy
+percentage delta for each matched run pair.
+
 | Run family | Release off | Release on | Interpretation |
 |---|---:|---:|---|
-| THP fixed-order | +1.88% | +0.27% | first valid THP-enabled run |
-| Balanced 1 | +0.44% | +0.12% | legacy first |
+| THP fixed-order | +1.88% | +0.26% | first valid THP-enabled run |
+| Balanced 1 | +0.43% | +0.12% | legacy first |
 | Balanced 2 | +0.48% | +0.38% | Temeraire first |
-| Balanced 3 | -0.76% | -2.37% | negative run |
-| Balanced 4 | +3.51% | -12.07% | release-on outlier |
+| Balanced 3 | -0.76% | -2.34% | negative run |
+| Balanced 4 | +3.46% | -12.02% | release-on outlier |
 | Targeted release-on | n/a | +0.12% | rerun of the anomaly |
 
 The strongest local signal is release-off: it is positive in most THP-enabled
 runs and its median is close to the paper's small Redis improvement. Release-on
-is smaller and noisier. The severe `-12.07%` release-on result did not reproduce
+is smaller and noisier. The severe `-12.02%` release-on result did not reproduce
 in the targeted rerun, so it should be treated as a transient outlier unless it
 appears again.
 
