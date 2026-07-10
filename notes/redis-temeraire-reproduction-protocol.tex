@@ -8,6 +8,7 @@
 \usepackage{enumitem}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{booktabs}
 
 \hypersetup{
   colorlinks=true,
@@ -670,5 +671,69 @@ docker compose run --rm temeraire-dev bash -lc "./scripts/run_redis_benchmark.sh
 
 For smoke testing, the environment variables for trial count and request count can be lowered temporarily.
 For seminar measurements, the defaults should remain documented and any deviations should be recorded.
+
+\section{Post-Audit Release-On Finding}
+
+A final audit identified a configuration error in every run labelled
+\texttt{release-on}. The orchestration enabled TCMalloc's background-actions
+thread, but it did not set the background-release-rate environment variable
+(\texttt{TEMERAIRE\_TCMALLOC\_}\allowbreak
+\texttt{BACKGROUND\_RELEASE\_RATE\_BPS}). In the pinned
+public TCMalloc revision, the default background release rate is zero. The
+thread therefore continued to perform its per-CPU-cache maintenance, but its
+pageheap release calculation produced zero bytes and did not invoke an
+effective periodic \texttt{ReleaseMemoryToSystem} operation.
+
+Consequently, the existing \texttt{release-on} measurements do not reproduce
+the paper's periodic-memory-release condition and must not be compared with the
+paper's \texttt{+0.44\%} Redis result. This applies both to the balanced runs
+and to the targeted rerun of the \texttt{-12.02\%} anomaly. Those logs should
+be retained as evidence of the discovered configuration, but their earlier
+interpretation as a valid release-on experiment is superseded by this finding.
+
+Before rerunning this condition, the scripts should require and record an
+explicit positive background release rate and should fail when
+\texttt{release-on} is requested without one. Because the paper does not state
+the release rate used for Redis, any corrected run must report its chosen rate
+as an additional experimental assumption; ideally, several documented rates
+should be tested as a sensitivity analysis. The release-off runs are not
+invalidated by this issue, although their small sample and run-to-run variance
+still require cautious, descriptive interpretation.
+
+\subsection{What the correction exposed}
+
+Setting a non-zero rate was not enough to make the corrected run work. The
+first smoke test aborted at startup because the wrapper tried to find
+\texttt{SetBackgroundReleaseRate} and \texttt{ProcessBackgroundActions} with
+\texttt{dlsym}, but those symbols were not available through
+\texttt{RTLD\_DEFAULT} in the Redis process. The old wrapper had hidden this
+problem by returning silently when a lookup failed. The corrected wrapper now
+calls the TCMalloc API directly, and both Bazel targets explicitly link
+\texttt{//tcmalloc:malloc\_extension}. It also writes the applied byte rate to
+the Redis server log. The benchmark refuses to continue unless that exact log
+line is present.
+
+The same smoke test review found that \texttt{LD\_PRELOAD} had been exported by
+the benchmark script. It therefore applied not only to \texttt{redis-server},
+but also to \texttt{redis-cli} and \texttt{redis-benchmark}. This mixed server
+and client allocator effects into the old comparison. Preloading is now scoped
+to the server command, so the benchmark client is identical in the legacy and
+Temeraire conditions.
+
+Rebuilding then exposed an older naming mismatch in the checked-out TCMalloc
+tree: its existing targets were named \texttt{codex\_*}, while the current
+setup script creates \texttt{temeraire\_*} targets. The installed libraries had
+to be rebuilt from the targets that actually existed, while the setup template
+was updated with the missing link dependency. Finally, several shell scripts
+still had Windows CRLF line endings, causing Linux to look for
+\texttt{bash\textbackslash r}. Normalizing them to LF was necessary before the
+long run could start.
+
+These failures changed how the corrected experiment is validated. Release-on
+now requires a positive rate before any metadata or benchmark work begins. A
+two-trial smoke run must succeed for both allocators, the Redis log must confirm
+the requested rate, and \texttt{LD\_PRELOAD} must remain confined to the server.
+Only after those checks did the full 16, 64, and 256~MiB/s sensitivity matrix
+start.
 
 \end{document}

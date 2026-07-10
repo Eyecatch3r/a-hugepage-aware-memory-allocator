@@ -136,6 +136,7 @@ cc_binary(
     srcs = ["temeraire_wrapper.cc"],
     linkshared = 1,
     malloc = "//tcmalloc",
+    deps = ["//tcmalloc:malloc_extension"],
 )
 
 cc_binary(
@@ -143,7 +144,10 @@ cc_binary(
     srcs = ["temeraire_wrapper.cc"],
     linkshared = 1,
     malloc = "//tcmalloc",
-    deps = ["//tcmalloc:want_no_hpaa"],
+    deps = [
+        "//tcmalloc:malloc_extension",
+        "//tcmalloc:want_no_hpaa",
+    ],
 )
 EOF
 fi

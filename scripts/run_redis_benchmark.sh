@@ -37,6 +37,7 @@ fi
 server_cmd=( "${command_prefix[@]}" "${REDIS_DIR}/redis-server" "--port" "${PORT}" "--save" "" "--appendonly" "no" )
 
 allocator_mode_note=""
+PRELOAD_LIB=""
 case "${ALLOCATOR}" in
   glibc)
     allocator_mode_note="system glibc allocator"
@@ -46,7 +47,7 @@ case "${ALLOCATOR}" in
       echo "Missing ${GOOGLE_TCMALLOC_LEGACY_LIB}. Run ./scripts/setup_env.sh first." >&2
       exit 1
     fi
-    export LD_PRELOAD="${GOOGLE_TCMALLOC_LEGACY_LIB}"
+    PRELOAD_LIB="${GOOGLE_TCMALLOC_LEGACY_LIB}"
     allocator_mode_note="paper-era public google/tcmalloc build with want_no_hpaa linked to force the legacy pageheap path"
     ;;
   temeraire)
@@ -54,7 +55,7 @@ case "${ALLOCATOR}" in
       echo "Missing ${GOOGLE_TCMALLOC_TEMERAIRE_LIB}. Run ./scripts/setup_env.sh first." >&2
       exit 1
     fi
-    export LD_PRELOAD="${GOOGLE_TCMALLOC_TEMERAIRE_LIB}"
+    PRELOAD_LIB="${GOOGLE_TCMALLOC_TEMERAIRE_LIB}"
     allocator_mode_note="paper-era public google/tcmalloc build using the hugepage-aware Temeraire path"
     ;;
   gperftools)
@@ -62,7 +63,7 @@ case "${ALLOCATOR}" in
       echo "Missing ${GPERFTOOLS_LIB}. Run ./scripts/setup_env.sh first." >&2
       exit 1
     fi
-    export LD_PRELOAD="${GPERFTOOLS_LIB}"
+    PRELOAD_LIB="${GPERFTOOLS_LIB}"
     allocator_mode_note="open-source gperftools tcmalloc side baseline"
     ;;
   *)
@@ -70,6 +71,10 @@ case "${ALLOCATOR}" in
     exit 1
     ;;
 esac
+
+if [[ -n "${PRELOAD_LIB}" ]]; then
+  server_cmd=( env "LD_PRELOAD=${PRELOAD_LIB}" "${server_cmd[@]}" )
+fi
 
 "${server_cmd[@]}" > "${RUN_DIR}/redis-server.log" 2>&1 &
 redis_pid=$!
@@ -115,7 +120,7 @@ capture_memory_snapshot() {
     echo "numa_node=${NUMA_NODE:-none}"
     echo "snapshot_every_trials=${SNAPSHOT_EVERY_TRIALS}"
     echo "background_release_enabled=${TEMERAIRE_TCMALLOC_ENABLE_BACKGROUND_RELEASE:-0}"
-    echo "background_release_rate_bps=${TEMERAIRE_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS:-default}"
+    echo "background_release_rate_bps=${TEMERAIRE_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS:-unset}"
     echo "build_exact_llvm=${BUILD_EXACT_LLVM:-0}"
     echo "llvm_ref_requested=${LLVM_REF:-unknown}"
     echo
@@ -154,6 +159,16 @@ if ! "${REDIS_DIR}/redis-cli" -p "${PORT}" ping >/dev/null 2>&1; then
   exit 1
 fi
 
+if [[ "${TEMERAIRE_TCMALLOC_ENABLE_BACKGROUND_RELEASE:-0}" == "1" ]]; then
+  expected_release_line="temeraire-wrapper: background release enabled rate_bps=${TEMERAIRE_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS}"
+  if ! grep -Fqx "${expected_release_line}" "${RUN_DIR}/redis-server.log"; then
+    echo "Redis started, but the wrapper did not confirm the requested background release rate." >&2
+    echo "Expected: ${expected_release_line}" >&2
+    cat "${RUN_DIR}/redis-server.log" >&2 || true
+    exit 1
+  fi
+fi
+
 write_thp_state "${RUN_DIR}/thp-before.txt"
 {
   echo "allocator=${ALLOCATOR}"
@@ -169,7 +184,7 @@ write_thp_state "${RUN_DIR}/thp-before.txt"
   echo "numa_node=${NUMA_NODE:-none}"
   echo "snapshot_every_trials=${SNAPSHOT_EVERY_TRIALS}"
   echo "background_release_enabled=${TEMERAIRE_TCMALLOC_ENABLE_BACKGROUND_RELEASE:-0}"
-  echo "background_release_rate_bps=${TEMERAIRE_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS:-default}"
+  echo "background_release_rate_bps=${TEMERAIRE_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS:-unset}"
   echo "build_exact_llvm=${BUILD_EXACT_LLVM:-0}"
   echo "llvm_ref_requested=${LLVM_REF:-unknown}"
   echo

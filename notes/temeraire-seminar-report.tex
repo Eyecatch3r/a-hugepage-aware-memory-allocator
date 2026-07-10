@@ -145,13 +145,14 @@ allocator selection through \code{LD_PRELOAD}, and documenting THP behavior
 during the benchmark. Several practical issues shaped the final setup,
 including public-code divergence from Google's internal artifact, wrapper
 visibility constraints, exact LLVM/clang matching, WSL2/Docker THP behavior,
-and a release-on outlier that required a targeted rerun.
+and a post-audit release-on configuration error.
 
 With THP active and periodic release disabled, the local median Temeraire
-advantage is $+0.48\%$, compared with the paper's $+0.75\%$. The release-on
-condition is smaller and noisier. The result should therefore be read as a
-careful public reproduction of the Redis methodology and small-effect regime,
-not as a validation of the paper's fleet-scale claims.
+advantage is $+0.48\%$, compared with the paper's $+0.75\%$. The attempted
+release-on runs used an effective pageheap release rate of zero and are not a
+measurement of the paper's release-on condition. The result should therefore
+be read as a public reconstruction with a valid release-off comparison and an
+open release-on question, not as a validation of the fleet-scale claims.
 \end{abstract}
 
 \begin{CCSXML} <ccs2012> <concept>
@@ -605,12 +606,38 @@ show a small positive throughput delta. The effect is expected to be clearest
 with periodic release disabled, because release-on adds interaction with
 background memory return and can disrupt or mask the placement signal.
 
+\subsection{Post-audit correction to the release-on condition}
+
+The initial analysis treated runs labelled \code{paper-release-on} as periodic
+release experiments. A later code audit showed that this label was wrong. The
+runner started TCMalloc's background-actions thread but did not set its
+background release rate. The pinned public TCMalloc revision initializes that
+rate to zero. Its background loop therefore continued per-CPU-cache
+maintenance, but calculated zero bytes for the pageheap release call.
+
+The existing release-on logs remain part of the experimental record, including
+the $-12.02\%$ run and its targeted rerun. They do not measure periodic pageheap
+release and cannot be compared with the paper's $+0.44\%$ Redis result. A
+corrected experiment must set and record a positive release rate. Since the
+paper does not publish that rate, the chosen value will remain an explicit
+local assumption and should be tested across several rates.
+
+The correction itself became another part of the reproduction work. The first
+smoke test showed that the wrapper's dynamic symbol lookups had been failing
+silently, so the wrapper was changed to call the linked TCMalloc API directly.
+It also revealed that \code{LD\_PRELOAD} had leaked from the Redis server to
+\code{redis-cli} and \code{redis-benchmark}; the preload is now scoped to the
+server process. Rebuilding required one more Bazel dependency fix, followed by
+Linux line-ending cleanup for the container scripts. The corrected run was only
+started after both allocator smoke tests logged the requested positive rate.
+
 \section{Results}
 \label{sec:results}
 
-Only runs produced through the paper-closer workflow are considered
-paper-comparable and included in the analysis below. Earlier direct-path runs
-are treated as environment validation and workflow development artifacts.
+The release-off analysis uses runs produced through the paper-closer workflow.
+Earlier direct-path runs are treated as environment validation and workflow
+development artifacts. The misconfigured release-on runs appear only to retain
+the audit trail; they are not paper-comparable measurements.
 Likewise, earlier paper-closer attempts with \code{AnonHugePages: 0 kB} are
 useful workflow validation, but not evidence for the hugepage mechanism. After
 THP was set to \code{always}, the reported runs showed non-zero
@@ -618,8 +645,9 @@ THP was set to \code{always}, the reported runs showed non-zero
 
 \begin{table}[ht]
 \caption{Run-level Temeraire throughput deltas in THP-enabled runs. L first
-and T first denote whether legacy or Temeraire ran first within the allocator
-pair. Off and on denote periodic release disabled and enabled.}
+and T first denote allocator order. Off is the valid release-disabled
+condition. The on column is retained as a record of the misconfigured
+zero-release-rate runs and is not a paper-comparable result.}
 \label{tab:run-deltas}
 \footnotesize
 \begin{tabular}{@{}lccc@{}}
@@ -636,20 +664,18 @@ targeted on & T first & --        & $+0.12\%$ \\
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:run-deltas} shows the main pattern. Release-off is the clearest
-signal: four of five full THP-enabled runs favor Temeraire, and the median delta
-is $+0.48\%$, compared with the paper's $+0.75\%$
-Redis\textsuperscript{\textdagger} result. This reproduces the direction and
-rough small-effect magnitude, not the exact value.
+Table~\ref{tab:run-deltas} shows the valid release-off comparisons and preserves
+the invalid release-on values for traceability. Four of five release-off runs
+favor Temeraire, and the median delta is $+0.48\%$, compared with the paper's
+$+0.75\%$ Redis\textsuperscript{\textdagger} result. The local pairs vary from
+$-0.76\%$ to $+3.46\%$, so this is a descriptive small-effect signal rather
+than a precise reproduction of the paper's value.
 
-Release-on is more ambiguous. Most runs are near flat or modestly positive, but
-balanced rerun~4 produced a $-12.02\%$ Temeraire slowdown. The run had correct
-metadata, release enabled, active THP, stable RSS, and stable anonymous hugepage
-counts, but the artifact did not capture enough system-wide telemetry to assign
-the slowdown confidently to the allocator, the VM, scheduling, I/O, or hugepage
-reclaim. A targeted release-on rerun with Temeraire first returned $+0.12\%$,
-with LPUSH at $-0.04\%$ and LRANGE at $+0.37\%$. The outlier is therefore
-treated as transient single-host behavior rather than a stable allocator effect.
+The release-on column is not interpreted as an allocator result. Balanced
+rerun~4 produced a $-12.02\%$ delta, and the targeted rerun returned $+0.12\%$,
+but both ran with a zero pageheap release rate. These values describe the
+misconfigured condition only; the targeted rerun does not repair the missing
+release-rate control.
 
 \begin{table}[ht]
 \caption{Paper comparison and local interpretation.}
@@ -659,15 +685,15 @@ treated as transient single-host behavior rather than a stable allocator effect.
 \toprule
 Mode & Paper & Local summary & Interpretation \\
 \midrule
-off & $+0.75\%$ & median $+0.48\%$ & recurring positive signal \\
-on  & $+0.44\%$ & about $0\%$ to $+0.38\%$ & small and noisy \\
+off & $+0.75\%$ & median $+0.48\%$ & small, highly variable signal \\
+on  & $+0.44\%$ & not measured & corrected rerun required \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Overall, once THP is active, the Redis comparison repeatedly lands in the
-paper's small-effect regime. It does not robustly reproduce the exact Table~1
-statistics, especially in the release-on condition.
+With THP active, the release-off comparison lands in the paper's small-effect
+regime, but the run-to-run spread is larger than the median effect. Release-on
+remains unmeasured.
 
 \section{Discussion and Related Work}
 \label{sec:discussion-related}
@@ -683,11 +709,11 @@ Redis effect is not obviously limited to Google's production environment.
 However, the result still comes from a consumer i7-10700K host under Docker and
 WSL2, not from the paper's Skylake Xeon server environment.
 
-The release-on result is less conclusive. Most runs are compatible with a small
-positive effect, but the $-12.02\%$ outlier shows that a single-host
-reproduction can be dominated by transient conditions when the signal is below
-one percent. Future reruns should collect \code{/proc/vmstat} hugepage counters,
-load average, and I/O activity throughout the benchmark.
+There is no valid release-on result yet. Future runs must use an explicit
+positive release rate and record the effective value. A rate sensitivity study
+is preferable to choosing one value after observing its throughput. The reruns
+should also collect \code{/proc/vmstat} hugepage counters, load average, and I/O
+activity throughout the benchmark.
 
 The main limitation remains environmental fidelity. The paper specifies the
 Redis version, benchmark shape, CPU family, LLVM commit, and optimization level,
@@ -721,11 +747,11 @@ compiler metadata, THP controls, and memory instrumentation.
 
 After those changes, the release-off Redis result falls into the same
 small-effect regime as the paper: a local median of $+0.48\%$ against the
-paper's $+0.75\%$. Release-on remains small and noisy, and one large negative
-outlier required a targeted rerun. The artifact shows that the Redis mechanism
-can be recovered with public code under appropriate THP conditions. It does not
-validate Google's fleet-scale claims or reproduce the exact production-era
-measurements.
+paper's $+0.75\%$, with substantial variation across the five run pairs. The
+release-on experiment was misconfigured at a zero pageheap release rate and
+must be repeated. The artifact reconstructs the public Redis path and documents
+where that reconstruction failed. It does not validate Google's fleet-scale
+claims or reproduce the exact production-era measurements.
 
 \clearpage
 \hbadness=10000

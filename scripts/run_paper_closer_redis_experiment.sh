@@ -21,6 +21,14 @@ REDIS_REQUESTS_PER_TRIAL="${REDIS_REQUESTS_PER_TRIAL:-1000000}"
 REDIS_CLIENTS="${REDIS_CLIENTS:-50}"
 REDIS_PIPELINE="${REDIS_PIPELINE:-16}"
 
+if [[ "${RUN_RELEASE_ON}" == "1" ]]; then
+  if [[ ! "${PAPER_BACKGROUND_RELEASE_RATE_BPS}" =~ ^[1-9][0-9]*$ ]]; then
+    echo "Release-on requires a positive PAPER_BACKGROUND_RELEASE_RATE_BPS." >&2
+    echo "The pinned TCMalloc default is 0 B/s, which does not release pageheap bytes." >&2
+    exit 1
+  fi
+fi
+
 usage() {
   cat <<'EOF'
 Usage: ./scripts/run_paper_closer_redis_experiment.sh [options]
@@ -153,7 +161,7 @@ SYSTEM_INFO_AFTER="$(find "${ROOT_DIR}/results/raw/system-info" -maxdepth 1 -typ
   echo "balanced_run_number=${PAPER_BALANCED_RUN_NUMBER:-none}"
   echo "release_off_allocator_order=${RELEASE_OFF_ALLOCATOR_ORDER}"
   echo "release_on_allocator_order=${RELEASE_ON_ALLOCATOR_ORDER}"
-  echo "background_release_rate_bps_override=${PAPER_BACKGROUND_RELEASE_RATE_BPS:-default}"
+  echo "background_release_rate_bps_override=${PAPER_BACKGROUND_RELEASE_RATE_BPS:-unset}"
   echo
   echo "## known unavoidable deviations"
   echo "single_machine=yes"

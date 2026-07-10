@@ -1,13 +1,12 @@
 #include <stdlib.h>
 
+#include <cstdio>
 #include <cstring>
-#include <dlfcn.h>
 #include <thread>
 
-namespace {
+#include "tcmalloc/malloc_extension.h"
 
-using ProcessBackgroundActionsFn = void (*)();
-using SetBackgroundReleaseRateFn = void (*)(size_t);
+namespace {
 
 bool env_enabled(const char* name) {
   const char* value = std::getenv(name);
@@ -21,28 +20,26 @@ void maybe_start_background_release() {
 
   const char* rate =
       std::getenv("TEMERAIRE_TCMALLOC_BACKGROUND_RELEASE_RATE_BPS");
-  if (rate != nullptr && rate[0] != '\0') {
-    size_t bytes_per_second = std::strtoull(rate, nullptr, 10);
-    void* rate_symbol = dlsym(
-        RTLD_DEFAULT,
-        "_ZN8tcmalloc15MallocExtension24SetBackgroundReleaseRateENS0_14BytesPerSecondE");
-    if (rate_symbol != nullptr) {
-      auto set_background_release_rate =
-          reinterpret_cast<SetBackgroundReleaseRateFn>(rate_symbol);
-      set_background_release_rate(bytes_per_second);
-    }
+  char* rate_end = nullptr;
+  size_t bytes_per_second =
+      rate == nullptr ? 0 : std::strtoull(rate, &rate_end, 10);
+  if (rate == nullptr || rate[0] == '\0' || rate_end == nullptr ||
+      rate_end[0] != '\0' || bytes_per_second == 0) {
+    std::fprintf(stderr,
+                 "temeraire-wrapper: release enabled without a positive rate\n");
+    std::abort();
   }
 
-  // This symbol is not present in every public tcmalloc revision we benchmark.
-  void* symbol = dlsym(
-      RTLD_DEFAULT,
-      "_ZN8tcmalloc15MallocExtension24ProcessBackgroundActionsEv");
-  if (symbol == nullptr) return;
+  tcmalloc::MallocExtension::SetBackgroundReleaseRate(
+      tcmalloc::MallocExtension::BytesPerSecond{bytes_per_second});
 
-  auto process_background_actions =
-      reinterpret_cast<ProcessBackgroundActionsFn>(symbol);
-  std::thread([process_background_actions]() {
-    process_background_actions();
+  std::fprintf(stderr,
+               "temeraire-wrapper: background release enabled rate_bps=%zu\n",
+               bytes_per_second);
+  std::fflush(stderr);
+
+  std::thread([]() {
+    tcmalloc::MallocExtension::ProcessBackgroundActions();
   }).detach();
 }
 

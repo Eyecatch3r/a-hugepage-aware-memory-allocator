@@ -319,6 +319,82 @@
 {\scriptsize Redis relevant: Der Listen-Workload trifft vor allem den kleinen Pfad \"uber \smallcode{HugeFiller}.}
 \end{frame}
 
+\begin{frame}{Was die Backend-Komponenten machen}
+\centering
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}[
+  >=Latex,
+  font=\scriptsize,
+  node distance=0.52cm and 0.62cm,
+  every node/.style={align=center},
+  allocatorbox/.style={
+    draw=blue!60!black,
+    fill=blue!12,
+    rounded corners=4pt,
+    line width=0.9pt,
+    minimum width=3.0cm,
+    minimum height=0.95cm,
+    font=\small\ttfamily
+  },
+  cachebox/.style={
+    draw=violet!70!black,
+    fill=violet!15,
+    rounded corners=4pt,
+    line width=0.9pt,
+    minimum width=2.55cm,
+    minimum height=0.9cm,
+    font=\small\ttfamily
+  },
+  fillerbox/.style={
+    draw=green!50!black,
+    fill=green!15,
+    rounded corners=4pt,
+    line width=0.9pt,
+    minimum width=2.8cm,
+    minimum height=0.9cm,
+    font=\small\ttfamily
+  },
+  regionbox/.style={
+    draw=orange!70!black,
+    fill=orange!10,
+    rounded corners=4pt,
+    dashed,
+    line width=0.9pt,
+    minimum width=2.8cm,
+    minimum height=0.9cm,
+    font=\small\ttfamily
+  },
+  expl/.style={text width=8.55cm, align=left, font=\small},
+  cue/.style={text width=11.95cm, align=left, font=\small}
+]
+\node[allocatorbox] (allocator) {HugeAllocator};
+\node[expl, right=of allocator] {
+  holt hugepage-ausgerichtete Bereiche vom System und gibt sie an den Backend-Pfad weiter
+};
+
+\node[cachebox, below=of allocator] (cache) {HugeCache};
+\node[expl, right=of cache] {
+  h\"alt komplett leere, bereits backed Hugepages bereit, damit sie wiederverwendet werden k\"onnen
+};
+
+\node[fillerbox, below=of cache] (filler) {HugeFiller};
+\node[expl, right=of filler] {
+  nimmt kleine Allokationen und packt sie auf passende, schon teilweise belegte Hugepages
+};
+
+\node[regionbox, below=of filler] (region) {HugeRegion};
+\node[expl, right=of region] {
+  behandelt mittlere Allokationen, bei denen ein normaler Filler-Pfad zu viel freien Rest blockieren w\"urde
+};
+
+\node[cue, below=0.55cm of region, xshift=2.95cm] (redis) {
+  Redis landet in diesem Experiment vor allem bei \smallcode{HugeFiller}: viele kleine Listen- und String-Allokationen, keine gro\ss{}en zusammenh\"angenden Bl\"ocke.
+};
+\end{tikzpicture}%
+}
+\note{This slide is the spoken legend for the previous figure. Keep it practical: allocator gets aligned hugepage ranges, cache reuses empty backed hugepages, filler handles the Redis-shaped small allocations, region catches medium allocations.}
+\end{frame}
+
 \begin{frame}{Redis-Hypothese}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
@@ -672,6 +748,34 @@ Die Wiederholungen zeigen eher ein Muster als eine exakte Zahl.
 \note{This prepares the audience for why we present run families, not just one headline number.}
 \end{frame}
 
+\begin{frame}{Release-on war faktisch nicht eingeschaltet}
+\begin{columns}[T,totalwidth=\textwidth]
+  \begin{column}{0.48\textwidth}
+    \begin{block}{Was der Runner tat}
+      \begin{itemize}
+        \item Background-Thread gestartet
+        \item Release-Rate nicht gesetzt
+        \item TCMalloc-Default im gepinnten Commit: \smallcode{0 B/s}
+      \end{itemize}
+    \end{block}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \begin{alertblock}{Folge}
+      Der Thread pflegte weiterhin Per-CPU-Caches, gab aber keine Pageheap-Bytes
+      periodisch mit \smallcode{ReleaseMemoryToSystem} frei.
+    \end{alertblock}
+  \end{column}
+\end{columns}
+\vspace{0.5em}
+\begin{block}{Was das f"ur die Auswertung bedeutet}
+  Die bisherigen Release-on-Werte beschreiben eine falsch konfigurierte
+  Bedingung. Sie sind kein Vergleich mit dem \pct{+0.44}-Wert aus dem Paper.
+  F"ur einen neuen Lauf braucht es eine explizite positive Rate; das Paper
+  nennt die verwendete Rate nicht.
+\end{block}
+\note{This is a correction to the experimental record, not a minor caveat. The release-on logs remain useful for diagnosing the setup, but they cannot support a claim about periodic pageheap release.}
+\end{frame}
+
 \begin{frame}{Protokollbefund: Release-off}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.50\textwidth}
@@ -704,7 +808,7 @@ Die Wiederholungen zeigen eher ein Muster als eine exakte Zahl.
 \note{This is the strongest result. It is still small and noisy, but it is repeatedly in the paper's direction.}
 \end{frame}
 
-\begin{frame}{Protokollbefund: Release-on}
+\begin{frame}{Release-on: nur Diagnosematerial}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.50\textwidth}
     \centering
@@ -723,14 +827,15 @@ Die Wiederholungen zeigen eher ein Muster als eine exakte Zahl.
     \end{tabular}
   \end{column}
   \begin{column}{0.46\textwidth}
-    \begin{alertblock}{Ausrei{\ss}er}
-      Balanced 4 zeigte \pct{-12.02}, aber ohne Redis-Fehler und ohne
-      offensichtlichen RSS- oder \smallcode{AnonHugePages}-Kollaps.
+    \begin{alertblock}{Kein Paper-Vergleich}
+      Alle Werte entstanden bei einer effektiven Pageheap-Release-Rate von
+      \smallcode{0 B/s}. Der Name \smallcode{release-on} im Manifest war damit
+      irref"uhrend.
     \end{alertblock}
     \vspace{0.45em}
-    \begin{block}{Diagnose-Rerun}
-      Der gezielte Release-on-Rerun mit Temeraire zuerst kam auf \pct{+0.12}.
-      Deshalb wird \pct{-12.02} nicht als stabiler Allocator-Effekt gelesen.
+    \begin{block}{Was von den Runs bleibt}
+      Die Logs zeigen den Konfigurationsfehler und die lokale Streuung. Die
+      Deltas werden nicht mehr als Release-on-Ergebnis interpretiert.
     \end{block}
     \vspace{0.35em}
     \scriptsize
@@ -738,29 +843,28 @@ Die Wiederholungen zeigen eher ein Muster als eine exakte Zahl.
     L \smallcode{LPUSH}=787017, \smallcode{LRANGE}=1190716.
   \end{column}
 \end{columns}
-\note{Do not hide the anomaly. The useful message is that the rerun made it look transient, not representative.}
+\note{Keep the numbers visible as part of the experimental record. Their status has changed: they document the misconfigured condition, not the paper's release-on case.}
 \end{frame}
 
 \begin{frame}{Einordnung der Befunde}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.49\textwidth}
-    \begin{block}{St\"arkere Aussage}
-      Release-off reproduziert die Richtung und die Gr\"o{\ss}enordnung des
-      Redis-Signals: lokal \pct{+0.48} Median, Paper \pct{+0.75}.
+    \begin{block}{Auswertbarer Befund}
+      Release-off liegt mit \pct{+0.48} Median im kleinen Effektbereich des
+      Paper-Werts von \pct{+0.75}. Die f\"unf Run-Paare streuen jedoch deutlich.
     \end{block}
   \end{column}
   \begin{column}{0.47\textwidth}
-    \begin{block}{Schw\"achere Aussage}
-      Release-on bleibt nahe null bis klein positiv, mit einem gro{\ss}en
-      lokalen Ausrei{\ss}er. Die exakte Table-1-Zahl wird nicht robust
-      reproduziert.
+    \begin{block}{Offener Befund}
+      Release-on ist noch nicht gemessen. Die vorhandenen Runs hatten eine
+      Pageheap-Release-Rate von \smallcode{0 B/s} und werden neu aufgesetzt.
     \end{block}
   \end{column}
 \end{columns}
 \vspace{0.55em}
 \begin{alertblock}{Vertretbare Aussage}
-Das Artefakt reproduziert die Redis-Methode und landet oft im kleinen
-Effektbereich des Papers, sobald THP wirklich aktiv ist.
+Das Artefakt rekonstruiert den Redis-Vergleich mit \"offentlichem Code.
+Release-off liefert ein kleines, aber stark streuendes Signal; Release-on ist offen.
 \end{alertblock}
 \note{This is the thesis of the final result. Keep the wording cautious and concrete.}
 \end{frame}
@@ -808,14 +912,13 @@ die ohne Google-Infrastruktur nicht nachstellbar sind.
       \item Vergleich aus public TCMalloc rekonstruiert
       \item Preload zur Laufzeit validiert
       \item THP-Fehlerbild gefunden und instrumentiert
-      \item Balanced Runs und gezielter Rerun zur Einordnung genutzt
+      \item Release-on-Konfigurationsfehler im Nachaudit gefunden
     \end{itemize}
   \end{column}
   \begin{column}{0.43\textwidth}
     \begin{alertblock}{Endstand}
-      Release-off zeigt ein wiederkehrendes kleines positives Signal.
-      Release-on ist verrauscht. Das Ergebnis ist eine vorsichtige
-      Redis-Reproduktion, keine Fleet-Reproduktion.
+      Release-off zeigt ein kleines positives Mediansignal bei hoher Streuung.
+      Release-on muss mit einer expliziten positiven Rate neu gemessen werden.
     \end{alertblock}
   \end{column}
 \end{columns}
