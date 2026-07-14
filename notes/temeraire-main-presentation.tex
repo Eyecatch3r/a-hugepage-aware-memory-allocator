@@ -13,6 +13,7 @@
 \usepackage{graphicx}
 \usepackage{xcolor}
 \usepackage{listings}
+\usepackage{fontawesome5}
 \usepackage{tikz}
 \usetikzlibrary{positioning,arrows.meta,calc,fit}
 
@@ -229,97 +230,7 @@
 \end{columns}
 \end{frame}
 
-\begin{frame}{Temeraire Backend}
-\centering
-\resizebox{0.83\textwidth}{!}{%
-\begin{tikzpicture}[
-  >=Latex,
-  font=\scriptsize,
-  node distance=0.8cm and 1.2cm,
-  every node/.style={align=center},
-  allocatorbox/.style={
-    draw=blue!60!black,
-    fill=blue!12,
-    rounded corners=4pt,
-    line width=0.9pt,
-    minimum width=3.0cm,
-    minimum height=0.95cm,
-    font=\small\ttfamily
-  },
-  cachebox/.style={
-    draw=violet!70!black,
-    fill=violet!15,
-    rounded corners=4pt,
-    line width=0.9pt,
-    minimum width=2.55cm,
-    minimum height=0.9cm,
-    font=\small\ttfamily
-  },
-  fillerbox/.style={
-    draw=green!50!black,
-    fill=green!15,
-    rounded corners=4pt,
-    line width=0.9pt,
-    minimum width=2.8cm,
-    minimum height=0.9cm,
-    font=\small\ttfamily
-  },
-  regionbox/.style={
-    draw=orange!70!black,
-    fill=orange!10,
-    rounded corners=4pt,
-    dashed,
-    line width=0.9pt,
-    minimum width=2.8cm,
-    minimum height=0.9cm,
-    font=\small\ttfamily
-  },
-  solidflow/.style={
-    -{Latex[length=2.5mm,width=1.7mm]},
-    line width=1.0pt,
-    draw=black!75
-  },
-  dottedflow/.style={
-    -{Latex[length=2.5mm,width=1.7mm]},
-    dotted,
-    line width=1.0pt,
-    draw=black!70
-  },
-  textlabel/.style={font=\small,text=black},
-  biglabel/.style={font=\large,text=black}
-]
-\node[allocatorbox] (allocator) {HugeAllocator};
-\node[cachebox, below=1.1cm of allocator] (cache) {HugeCache};
-
-\node[fillerbox, below left=2.0cm and 1.5cm of cache] (filler) {HugeFiller};
-\node[regionbox, below right=2.0cm and 1.8cm of cache] (region) {HugeRegion};
-
-\node[biglabel, left=3.8cm of allocator, yshift=-0.2cm] (unbacked) {unbacked hugepages};
-\node[biglabel, left=3.5cm of cache, yshift=-1.0cm] (backed) {backed hugepages};
-
-\draw[solidflow] (cache) -- (allocator);
-\draw[solidflow] (filler.north east) -- (cache.south west);
-\draw[dottedflow] (region.north west) -- (allocator.south east);
-
-\node[textlabel, below=2.0cm of filler] (smallreq)
-  {small requests\\($< 1$ MiB)};
-\node[textlabel, below=2.0cm of cache] (largereq)
-  {large requests\\($\geq 1$ GiB)};
-\node[textlabel, below=2.0cm of region] (medreq)
-  {medium requests\\($1$ MiB to $1$ GiB)};
-
-\draw[solidflow] (smallreq.north) -- (filler.south);
-\draw[solidflow] (largereq.north) -- (cache.south);
-\draw[solidflow] (medreq.north west) -- (cache.south east);
-\draw[dottedflow] (medreq.north) --
-  node[right, textlabel, xshift=0.08cm] {\emph{sometimes}} (region.south);
-\end{tikzpicture}%
-}
-\par\vspace{0.25em}
-{\scriptsize Redis relevant: Der Listen-Workload trifft vor allem den kleinen Pfad \"uber \smallcode{HugeFiller}.}
-\end{frame}
-
-\begin{frame}{Was die Backend-Komponenten machen}
+\begin{frame}{Vier Komponenten teilen die Anfragen nach Gr\"o{\ss}e auf}
 \centering
 \resizebox{0.96\textwidth}{!}{%
 \begin{tikzpicture}[
@@ -369,26 +280,37 @@
 ]
 \node[allocatorbox] (allocator) {HugeAllocator};
 \node[expl, right=of allocator] {
-  holt hugepage-ausgerichtete Bereiche vom System und gibt sie an den Backend-Pfad weiter
+  \faLayerGroup\quad holt ausgerichtete Hugepage-Bereiche vom System
 };
 
 \node[cachebox, below=of allocator] (cache) {HugeCache};
 \node[expl, right=of cache] {
-  h\"alt komplett leere, bereits backed Hugepages bereit, damit sie wiederverwendet werden k\"onnen
+  \faArchive\quad h\"alt leere, bereits backed Hugepages zur Wiederverwendung
 };
 
 \node[fillerbox, below=of cache] (filler) {HugeFiller};
 \node[expl, right=of filler] {
-  nimmt kleine Allokationen und packt sie auf passende, schon teilweise belegte Hugepages
+  \faCompress\quad packt kleine Allokationen auf teilbelegte Hugepages
 };
 
 \node[regionbox, below=of filler] (region) {HugeRegion};
 \node[expl, right=of region] {
-  behandelt mittlere Allokationen, bei denen ein normaler Filler-Pfad zu viel freien Rest blockieren w\"urde
+  \faExpand\quad behandelt mittlere Allokationen mit gr\"o{\ss}erem Rest
 };
 
 \node[cue, below=0.55cm of region, xshift=2.95cm] (redis) {
-  Redis landet in diesem Experiment vor allem bei \smallcode{HugeFiller}: viele kleine Listen- und String-Allokationen, keine gro\ss{}en zusammenh\"angenden Bl\"ocke.
+  \textbf{Routing:} $<1$ MiB $\rightarrow$
+  \tikz[baseline=(tag.base)]{\node[fillerbox,minimum width=0pt,minimum height=0pt,
+    inner sep=2.5pt,font=\scriptsize\ttfamily] (tag) {HugeFiller};};
+  $1$ MiB--$1$ GiB $\rightarrow$
+  \tikz[baseline=(tag.base)]{\node[cachebox,minimum width=0pt,minimum height=0pt,
+    inner sep=2.5pt,font=\scriptsize\ttfamily] (tag) {HugeCache};}/
+  \tikz[baseline=(tag.base)]{\node[regionbox,minimum width=0pt,minimum height=0pt,
+    inner sep=2.5pt,font=\scriptsize\ttfamily] (tag) {HugeRegion};};
+  $\geq1$ GiB $\rightarrow$
+  \tikz[baseline=(tag.base)]{\node[cachebox,minimum width=0pt,minimum height=0pt,
+    inner sep=2.5pt,font=\scriptsize\ttfamily] (tag) {HugeCache};}.
+  Redis trifft vor allem den kleinen Pfad.
 };
 \end{tikzpicture}%
 }
@@ -427,7 +349,7 @@ und Laufzeit-Validierung d\"urfen nicht implizit bleiben.
 \note{This is the handoff from mechanism to reproduction. The expected effect is small, so the rest of the talk is about removing easy sources of false signal.}
 \end{frame}
 
-\begin{frame}{Technischer Ausgangspunkt}
+\begin{frame}{Zwei Libraries machen den Vergleich m\"oglich}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
     \begin{block}{Rolle der Wrapper}
@@ -463,7 +385,7 @@ preloadbar, damit der Legacy-vs.-Temeraire-Pfad messbar wird.
 \end{alertblock}
 \end{frame}
 
-\begin{frame}{Bazel im TCMalloc-Tree}
+\begin{frame}{Der Wrapper musste in den historischen Build-Graph}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
     \begin{block}{Problem}
@@ -494,38 +416,6 @@ preloadbar, damit der Legacy-vs.-Temeraire-Pfad messbar wird.
 \small
 Bazel brachte TCMallocs Build-Graphen mit: Abseil, interne Targets und
 Link-Semantik mussten nicht in CMake nachgebaut werden.
-\end{frame}
-
-\begin{frame}[fragile]{Codepfad: Wrapper und Bazel}
-\vspace{1.1em}
-{\scriptsize\bfseries Bazel-Target f\"ur Legacy}\par\vspace{0.15em}
-\begin{lstlisting}[style=temCode,language=Bazel]
-cc_binary(
-    name = "temeraire_libtcmalloc_legacy.so",
-    srcs = ["temeraire_wrapper.cc"],
-    linkshared = 1,
-    malloc = "//tcmalloc",
-    deps = ["//tcmalloc:want_no_hpaa"],
-)
-\end{lstlisting}
-\vspace{0.55em}
-\begin{columns}[T,totalwidth=\textwidth]
-  \begin{column}{0.49\textwidth}
-    {\scriptsize\bfseries Temeraire-Target}\par\vspace{0.15em}
-\begin{lstlisting}[style=temCode,language=Bazel]
-name = "temeraire_libtcmalloc_temeraire.so"
-malloc = "//tcmalloc"
-\end{lstlisting}
-  \end{column}
-\begin{column}{0.47\textwidth}
-    {\scriptsize\bfseries Auswahl beim Redis-Start}\par\vspace{0.15em}
-\begin{lstlisting}[style=temCode,language=TemShell]
-LD_PRELOAD="$GOOGLE_TCMALLOC_LEGACY_LIB"
-LD_PRELOAD="$GOOGLE_TCMALLOC_TEMERAIRE_LIB"
-\end{lstlisting}
-  \end{column}
-\end{columns}
-\note{This is the hands-on code slide: the important line is the legacy dependency on want_no_hpaa, plus the runtime preload switch.}
 \end{frame}
 
 \begin{frame}{Startpunkt: falsche N\"ahe zum Paper}
@@ -606,7 +496,7 @@ LD_PRELOAD="$GOOGLE_TCMALLOC_TEMERAIRE_LIB"
 \note{Keep this concrete. It shows why the final repo has wrapper logic and exact compiler plumbing instead of one clean build command.}
 \end{frame}
 
-\begin{frame}{Allocator-Pr\"ufung}
+\begin{frame}{Ein erfolgreicher Start beweist noch nicht den Allocator}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.52\textwidth}
     \begin{itemize}
@@ -636,7 +526,7 @@ LD_PRELOAD="$GOOGLE_TCMALLOC_TEMERAIRE_LIB"
 \note{This is a good place to mention that a benchmark can look successful while using the wrong allocator.}
 \end{frame}
 
-\begin{frame}{Fehlerbild: THP war nicht aktiv genug}
+\begin{frame}{Ohne aktive Hugepages misst der Lauf nicht Temeraire}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
     \begin{alertblock}{Beobachtung in fr\"uhen Runs}
@@ -667,7 +557,7 @@ Hugepage-Pfad wirklich Teil der Messung.
 \note{This is the main turning point. Earlier runs were useful engineering validation, but not evidence for the hugepage mechanism.}
 \end{frame}
 
-\begin{frame}{Ablauf des g\"ultigen Runs}
+\begin{frame}{Der g\"ultige Lauf pr\"uft Aufbau, Mechanismus und Ergebnis}
 \begin{center}
 \resizebox{0.96\textwidth}{!}{%
 \begin{tikzpicture}[node distance=0.46cm and 0.46cm]
@@ -694,22 +584,22 @@ Hugepage-Pfad wirklich Teil der Messung.
 \vspace{0.18em}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
-    \begin{block}{Was technisch passiert}
+    \begin{block}{\faCogs\quad Konfiguration}
       \footnotesize
       \begin{itemize}
+        \item 2000 Trials; je 1 Mio. Requests
+        \item 50 Clients, Pipeline 16
         \item ein Redis-Binary, zwei TCMalloc-\smallcode{.so}s
-        \item Legacy: \smallcode{want\_no\_hpaa}; T: HPAA aktiv
-        \item \smallcode{LD\_PRELOAD} w\"ahlt pro Redis-Prozess
       \end{itemize}
     \end{block}
   \end{column}
   \begin{column}{0.48\textwidth}
-    \begin{block}{Was als Ergebnis bleibt}
+    \begin{block}{\faClipboardCheck\quad Auswertung}
       \footnotesize
       \begin{itemize}
-        \item \smallcode{summary.csv}: LPUSH/LRANGE-Mittel
-        \item Snapshots: THP und \smallcode{AnonHugePages}
-        \item Delta nur gegen passenden Legacy-Run
+        \item LPUSH/LRANGE als harmonisches Mittel
+        \item THP und \smallcode{AnonHugePages} protokolliert
+        \item Delta nur im passenden Legacy/Temeraire-Paar
       \end{itemize}
     \end{block}
   \end{column}
@@ -717,66 +607,32 @@ Hugepage-Pfad wirklich Teil der Messung.
 \note{This slide should be explained as the actual handoff chain: setup creates two preload libraries, the runner selects one library per Redis process, and the aggregator only compares matched legacy/Temeraire summaries.}
 \end{frame}
 
-\begin{frame}{Messprotokoll}
-\begin{columns}[T,totalwidth=\textwidth]
-  \begin{column}{0.47\textwidth}
-    \begin{block}{Konfiguration}
-      \begin{itemize}
-        \item 2000 Trials pro Modus
-        \item 1 Mio. Requests pro Trial
-        \item 50 Clients, Pipeline 16
-        \item Redis~6.0.9, TCMalloc \smallcode{8e534f...}
-      \end{itemize}
-    \end{block}
-  \end{column}
-  \begin{column}{0.49\textwidth}
-    \begin{block}{Auswertung}
-      \begin{itemize}
-        \item \smallcode{summary.csv}: Mittelwert f\"ur \smallcode{LPUSH} und \smallcode{LRANGE}
-        \item \smallcode{trials.csv}: alle Einzelmessungen bleiben erhalten
-        \item harmonisches Mittel als kombinierte Rate
-        \item Temeraire-Delta immer gegen passenden Legacy-Run
-      \end{itemize}
-    \end{block}
-  \end{column}
-\end{columns}
-\vspace{0.5em}
-\begin{alertblock}{Lesart}
-Bei Effekten unter einem Prozent ist ein einzelner lokaler Run kein Urteil.
-Die Wiederholungen zeigen eher ein Muster als eine exakte Zahl.
-\end{alertblock}
-\note{This prepares the audience for why we present run families, not just one headline number.}
-\end{frame}
-
 \begin{frame}{Release-on war faktisch nicht eingeschaltet}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
-    \begin{block}{Was der Runner tat}
+    \begin{block}{\faPlayCircle\quad Was lief}
       \begin{itemize}
         \item Background-Thread gestartet
-        \item Release-Rate nicht gesetzt
-        \item TCMalloc-Default im gepinnten Commit: \smallcode{0 B/s}
+        \item Per-CPU-Caches wurden gepflegt
       \end{itemize}
     \end{block}
   \end{column}
   \begin{column}{0.48\textwidth}
-    \begin{alertblock}{Folge}
-      Der Thread pflegte weiterhin Per-CPU-Caches, gab aber keine Pageheap-Bytes
-      periodisch mit \smallcode{ReleaseMemoryToSystem} frei.
+    \begin{alertblock}{\faExclamationTriangle\quad Was fehlte}
+      Release-Rate nicht gesetzt: TCMalloc blieb bei \smallcode{0 B/s}.
+      Damit gab es keine periodische Pageheap-Freigabe.
     \end{alertblock}
   \end{column}
 \end{columns}
 \vspace{0.5em}
-\begin{block}{Was das f"ur die Auswertung bedeutet}
-  Die bisherigen Release-on-Werte beschreiben eine falsch konfigurierte
-  Bedingung. Sie sind kein Vergleich mit dem \pct{+0.44}-Wert aus dem Paper.
-  F"ur einen neuen Lauf braucht es eine explizite positive Rate; das Paper
-  nennt die verwendete Rate nicht.
+\begin{block}{Konsequenz}
+  Die alten Werte waren kein Release-on-Ergebnis. Der korrigierte Lauf setzt
+  eine positive Rate explizit; das Paper nennt seine Rate nicht.
 \end{block}
 \note{This is a correction to the experimental record, not a minor caveat. The release-on logs remain useful for diagnosing the setup, but they cannot support a claim about periodic pageheap release.}
 \end{frame}
 
-\begin{frame}{Protokollbefund: Release-off}
+\begin{frame}{Release-off liegt nahe am kleinen Paper-Effekt}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.50\textwidth}
     \centering
@@ -808,45 +664,61 @@ Die Wiederholungen zeigen eher ein Muster als eine exakte Zahl.
 \note{This is the strongest result. It is still small and noisy, but it is repeatedly in the paper's direction.}
 \end{frame}
 
-\begin{frame}{Release-on: nur Diagnosematerial}
+\begin{frame}{Die alten Release-on-Runs bleiben nur als Fehlerprotokoll}
 \begin{columns}[T,totalwidth=\textwidth]
-  \begin{column}{0.50\textwidth}
+  \begin{column}{0.47\textwidth}
     \centering
-    \small
-    \begin{tabular}{@{}lcc@{}}
-      \toprule
-      Run & Reihenfolge & Delta \\
-      \midrule
-      THP fixed-order & L first & \pct{+0.26} \\
-      balanced 1 & L first & \pct{+0.12} \\
-      balanced 2 & T first & \pct{+0.38} \\
-      balanced 3 & L first & \pct{-2.34} \\
-      balanced 4 & T first & \pct{-12.02} \\
-      targeted rerun & T first & \pct{+0.12} \\
-      \bottomrule
-    \end{tabular}
+    \color{temOrange}\fontsize{31}{34}\selectfont\faBug
+    \par\vspace{0.35em}
+    \color{temDark}\Large\smallcode{release-on}\par
+    \vspace{0.15em}
+    \normalsize effektiv \smallcode{0 B/s}
   \end{column}
-  \begin{column}{0.46\textwidth}
+  \begin{column}{0.49\textwidth}
     \begin{alertblock}{Kein Paper-Vergleich}
-      Alle Werte entstanden bei einer effektiven Pageheap-Release-Rate von
-      \smallcode{0 B/s}. Der Name \smallcode{release-on} im Manifest war damit
-      irref"uhrend.
+      Der Manifestname versprach eine Bedingung, die der Prozess nicht erf\"ullte.
     \end{alertblock}
-    \vspace{0.45em}
-    \begin{block}{Was von den Runs bleibt}
-      Die Logs zeigen den Konfigurationsfehler und die lokale Streuung. Die
-      Deltas werden nicht mehr als Release-on-Ergebnis interpretiert.
+    \vspace{0.4em}
+    \begin{block}{Warum die Logs bleiben}
+      Sie dokumentieren den Konfigurationsfehler und die lokale Streuung. Die
+      Deltas werden nicht als Ergebnis verwendet.
     \end{block}
-    \vspace{0.35em}
-    \scriptsize
-    Rerun-Rohwerte: T \smallcode{LPUSH}=786686, \smallcode{LRANGE}=1195121;
-    L \smallcode{LPUSH}=787017, \smallcode{LRANGE}=1190716.
   \end{column}
 \end{columns}
 \note{Keep the numbers visible as part of the experimental record. Their status has changed: they document the misconfigured condition, not the paper's release-on case.}
 \end{frame}
 
-\begin{frame}{Einordnung der Befunde}
+\begin{frame}{Drei Release-Raten ergeben keinen stabilen Trend}
+\centering
+\small
+\begin{tabular}{@{}lrrrrr@{}}
+  \toprule
+  Rate & Pair 1 & Pair 2 & Pair 3 & Pair 4 & Median \\
+  \midrule
+  16 MiB/s  & \pct{+1.91} & \pct{-0.16} & \pct{-0.27} & \pct{-1.37} & \pct{-0.21} \\
+  64 MiB/s  & \pct{-6.88} & \pct{+2.10} & \pct{+11.49} & \pct{+12.21} & \pct{+6.80} \\
+  256 MiB/s & \pct{+15.73} & \pct{-0.09} & \pct{+0.50} & \pct{-0.77} & \pct{+0.20} \\
+  \bottomrule
+\end{tabular}
+\vspace{0.55em}
+\begin{columns}[T,totalwidth=\textwidth]
+  \begin{column}{0.48\textwidth}
+    \begin{block}{Was jetzt stimmt}
+      24 Allocator-Runs, je 2000 Trials. Jeder Redis-Log best\"atigt die
+      positive Release-Rate.
+    \end{block}
+  \end{column}
+  \begin{column}{0.48\textwidth}
+    \begin{alertblock}{Was das Ergebnis begrenzt}
+      Kein monotoner Rate-Effekt. Absolute Leistung fiel zeitweise um mehr als
+      20\% und erholte sich sp\"ater wieder.
+    \end{alertblock}
+  \end{column}
+\end{columns}
+\note{The corrected mechanism works, but the host is not stable enough for a clean sub-one-percent comparison. The 64 MiB/s median and the first 256 MiB/s pair are driven by large throughput shifts between consecutive hour-long runs.}
+\end{frame}
+
+\begin{frame}{Host-Drift ist gr\"o{\ss}er als der erwartete Effekt}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.49\textwidth}
     \begin{block}{Auswertbarer Befund}
@@ -855,21 +727,21 @@ Die Wiederholungen zeigen eher ein Muster als eine exakte Zahl.
     \end{block}
   \end{column}
   \begin{column}{0.47\textwidth}
-    \begin{block}{Offener Befund}
-      Release-on ist noch nicht gemessen. Die vorhandenen Runs hatten eine
-      Pageheap-Release-Rate von \smallcode{0 B/s} und werden neu aufgesetzt.
+    \begin{block}{Korrigierter Befund}
+      Release-on ist technisch korrekt gemessen, zeigt aber keinen stabilen
+      Rate-Trend. Host-Drift ist gr\"o{\ss}er als der Paper-Effekt.
     \end{block}
   \end{column}
 \end{columns}
 \vspace{0.55em}
 \begin{alertblock}{Vertretbare Aussage}
 Das Artefakt rekonstruiert den Redis-Vergleich mit \"offentlichem Code.
-Release-off liefert ein kleines, aber stark streuendes Signal; Release-on ist offen.
+Der korrigierte Lauf zeigt vor allem die Grenze konsekutiver Ein-Stunden-Runs.
 \end{alertblock}
 \note{This is the thesis of the final result. Keep the wording cautious and concrete.}
 \end{frame}
 
-\begin{frame}{Grenzen}
+\begin{frame}{Was diese Reproduktion nicht zeigen kann}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
     \begin{block}{Nicht reproduziert}
@@ -912,13 +784,13 @@ die ohne Google-Infrastruktur nicht nachstellbar sind.
       \item Vergleich aus public TCMalloc rekonstruiert
       \item Preload zur Laufzeit validiert
       \item THP-Fehlerbild gefunden und instrumentiert
-      \item Release-on-Konfigurationsfehler im Nachaudit gefunden
+      \item Release-on korrigiert und mit drei Raten neu gemessen
     \end{itemize}
   \end{column}
   \begin{column}{0.43\textwidth}
     \begin{alertblock}{Endstand}
       Release-off zeigt ein kleines positives Mediansignal bei hoher Streuung.
-      Release-on muss mit einer expliziten positiven Rate neu gemessen werden.
+      Release-on ist aktiv, aber Host-Drift verhindert ein stabiles Ergebnis.
     \end{alertblock}
   \end{column}
 \end{columns}

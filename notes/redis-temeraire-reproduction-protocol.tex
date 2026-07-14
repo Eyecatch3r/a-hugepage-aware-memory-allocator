@@ -736,4 +736,40 @@ the requested rate, and \texttt{LD\_PRELOAD} must remain confined to the server.
 Only after those checks did the full 16, 64, and 256~MiB/s sensitivity matrix
 start.
 
+\subsection{Completed corrected release-on matrix}
+
+The corrected matrix completed all 24 allocator runs: four legacy/Temeraire
+pairs at each of 16, 64, and 256~MiB/s, with 2000 trials per allocator run.
+Allocator order alternated within each rate. Every Redis server log confirmed
+the requested positive byte rate before the benchmark proceeded.
+
+\begin{center}
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Rate & Pair 1 & Pair 2 & Pair 3 & Pair 4 & Median \\
+\midrule
+16 MiB/s  & $+1.91\%$ & $-0.16\%$ & $-0.27\%$ & $-1.37\%$ & $-0.21\%$ \\
+64 MiB/s  & $-6.88\%$ & $+2.10\%$ & $+11.49\%$ & $+12.21\%$ & $+6.80\%$ \\
+256 MiB/s & $+15.73\%$ & $-0.09\%$ & $+0.50\%$ & $-0.77\%$ & $+0.20\%$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The rates do not form a monotonic pattern. The 16~MiB/s pairs are centered
+near zero. Three of the four 256~MiB/s pairs are also within one percentage
+point of zero; its $+15.73\%$ first pair is an outlier. The 64~MiB/s runs range
+from $-6.88\%$ to $+12.21\%$. During that part of the matrix, absolute combined
+throughput moved from roughly 978~kRPS down to 753~kRPS and later recovered
+above 950~kRPS. Similar recovery explains the first 256~MiB/s pair. The
+allocator that happened to run during a slow or recovered host period inherited
+most of that difference.
+
+The corrected experiment therefore does not show a stable release-rate effect
+or robustly reproduce the paper's $+0.44\%$ release-on result. Its useful result
+is methodological: release is now verifiably active, while the remaining
+single-host Docker/WSL2 drift is larger than the sub-one-percent effect being
+measured. Future work should interleave shorter allocator blocks or run both
+conditions on isolated, controlled hosts instead of comparing consecutive
+hour-long runs.
+
 \end{document}

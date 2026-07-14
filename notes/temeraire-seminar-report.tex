@@ -148,11 +148,12 @@ visibility constraints, exact LLVM/clang matching, WSL2/Docker THP behavior,
 and a post-audit release-on configuration error.
 
 With THP active and periodic release disabled, the local median Temeraire
-advantage is $+0.48\%$, compared with the paper's $+0.75\%$. The attempted
-release-on runs used an effective pageheap release rate of zero and are not a
-measurement of the paper's release-on condition. The result should therefore
-be read as a public reconstruction with a valid release-off comparison and an
-open release-on question, not as a validation of the fleet-scale claims.
+advantage is $+0.48\%$, compared with the paper's $+0.75\%$. After correcting
+the release-on setup, a 24-run sensitivity matrix tested 16, 64, and
+256~MiB/s. The rate medians were $-0.21\%$, $+6.80\%$, and $+0.20\%$, but the
+large middle value coincided with severe host-throughput drift. The result is a
+public reconstruction that exposes both the allocator signal and the limits of
+consecutive hour-long measurements on Docker/WSL2.
 \end{abstract}
 
 \begin{CCSXML} <ccs2012> <concept>
@@ -631,6 +632,10 @@ server process. Rebuilding required one more Bazel dependency fix, followed by
 Linux line-ending cleanup for the container scripts. The corrected run was only
 started after both allocator smoke tests logged the requested positive rate.
 
+The completed sensitivity matrix contains four alternating-order allocator
+pairs at each of 16, 64, and 256~MiB/s, for 24 allocator runs in total. Every
+run contains 2000 trials and an explicit server-log confirmation of its rate.
+
 \section{Results}
 \label{sec:results}
 
@@ -686,14 +691,38 @@ release-rate control.
 Mode & Paper & Local summary & Interpretation \\
 \midrule
 off & $+0.75\%$ & median $+0.48\%$ & small, highly variable signal \\
-on  & $+0.44\%$ & not measured & corrected rerun required \\
+on  & $+0.44\%$ & rate sweep completed & host drift dominates \\
 \bottomrule
 \end{tabular}
 \end{table}
 
+\begin{table}[ht]
+\caption{Corrected release-on sensitivity results. Each cell is the Temeraire
+throughput delta against its paired legacy run.}
+\label{tab:release-sensitivity}
+\footnotesize
+\begin{tabular}{@{}lrrrrr@{}}
+\toprule
+Rate & Pair 1 & Pair 2 & Pair 3 & Pair 4 & Median \\
+\midrule
+16 MiB/s  & $+1.91\%$ & $-0.16\%$ & $-0.27\%$ & $-1.37\%$ & $-0.21\%$ \\
+64 MiB/s  & $-6.88\%$ & $+2.10\%$ & $+11.49\%$ & $+12.21\%$ & $+6.80\%$ \\
+256 MiB/s & $+15.73\%$ & $-0.09\%$ & $+0.50\%$ & $-0.77\%$ & $+0.20\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The sensitivity results are not monotonic. The 16~MiB/s pairs are centered near
+zero, as are three of four 256~MiB/s pairs. The 64~MiB/s range spans
+$-6.88\%$ to $+12.21\%$. During those runs, absolute combined throughput fell
+from about 978~kRPS to 753~kRPS and later recovered above 950~kRPS. The first
+256~MiB/s pair shows a similar recovery. These shifts are much larger than the
+paper's $+0.44\%$ effect and track run time more plausibly than release rate.
+
 With THP active, the release-off comparison lands in the paper's small-effect
-regime, but the run-to-run spread is larger than the median effect. Release-on
-remains unmeasured.
+regime, but the run-to-run spread is larger than the median effect. Corrected
+release-on is now measured, but host drift prevents a stable rate-dependent
+conclusion.
 
 \section{Discussion and Related Work}
 \label{sec:discussion-related}
@@ -709,11 +738,12 @@ Redis effect is not obviously limited to Google's production environment.
 However, the result still comes from a consumer i7-10700K host under Docker and
 WSL2, not from the paper's Skylake Xeon server environment.
 
-There is no valid release-on result yet. Future runs must use an explicit
-positive release rate and record the effective value. A rate sensitivity study
-is preferable to choosing one value after observing its throughput. The reruns
-should also collect \code{/proc/vmstat} hugepage counters, load average, and I/O
-activity throughout the benchmark.
+The corrected release-on matrix does not reproduce a stable $+0.44\%$ effect.
+Its strongest apparent improvements occur in pairs where absolute host
+throughput recovered between consecutive allocator runs. Shorter interleaved
+blocks, CPU isolation, and a native Linux host would reduce this confounding.
+Future runs should also collect \code{/proc/vmstat} hugepage counters, load
+average, CPU frequency, and I/O activity throughout the benchmark.
 
 The main limitation remains environmental fidelity. The paper specifies the
 Redis version, benchmark shape, CPU family, LLVM commit, and optimization level,
@@ -748,10 +778,11 @@ compiler metadata, THP controls, and memory instrumentation.
 After those changes, the release-off Redis result falls into the same
 small-effect regime as the paper: a local median of $+0.48\%$ against the
 paper's $+0.75\%$, with substantial variation across the five run pairs. The
-release-on experiment was misconfigured at a zero pageheap release rate and
-must be repeated. The artifact reconstructs the public Redis path and documents
-where that reconstruction failed. It does not validate Google's fleet-scale
-claims or reproduce the exact production-era measurements.
+corrected release-on matrix verifies that periodic release is active, but its
+rate medians do not form a stable trend and several pairs are dominated by host
+drift. The artifact reconstructs the public Redis path and documents where
+local measurement fidelity becomes the limiting factor. It does not validate
+Google's fleet-scale claims or reproduce the exact production-era measurements.
 
 \clearpage
 \hbadness=10000
