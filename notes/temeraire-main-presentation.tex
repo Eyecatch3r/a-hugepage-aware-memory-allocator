@@ -17,6 +17,19 @@
 \usepackage{tikz}
 \usetikzlibrary{positioning,arrows.meta,calc,fit}
 
+\ifdefined\SpeakerNotesVersion
+  \usepackage{pgfpages}
+  \setbeameroption{show notes on second screen=right}
+  \setbeamertemplate{note page}{%
+    \vspace{1.2em}
+    {\usebeamerfont{frametitle}\color{temDark}\insertframetitle\par}
+    \vspace{0.8em}
+    \hrule
+    \vspace{0.8em}
+    {\footnotesize\insertnote}
+  }
+\fi
+
 \definecolor{temBlue}{HTML}{356CA5}
 \definecolor{temGreen}{HTML}{4F8A5B}
 \definecolor{temOrange}{HTML}{D9892B}
@@ -94,7 +107,15 @@
 
 \begin{document}
 
-\maketitle
+\begin{frame}
+\titlepage
+\note{
+  Hallo zusammen. Ich beschäftige mich heute mit Temeraire, einem Hugepage-bewussten Speicher-Allocator aus einem OSDI-Paper von 2021.
+  
+  \par\medskip
+  Mein ursprüngliches Ziel war relativ einfach formuliert: Ich wollte das öffentlich beschriebene Redis-Experiment reproduzieren. Im Laufe der Arbeit stellte sich allerdings heraus, dass das Ausführen von \smallcode{redis-benchmark} der kleinste Teil des Problems war. Ein großer Teil der Arbeit bestand darin, überhaupt sicherzustellen, dass ich den richtigen Allocator, aktive Hugepages und die richtige Release-Konfiguration messe.
+}
+\end{frame}
 
 \begin{frame}{Was wird hier reproduziert?}
 \begin{columns}[T,totalwidth=\textwidth]
@@ -117,7 +138,15 @@
     \end{alertblock}
   \end{column}
 \end{columns}
-\note{Start with the scope. The point is not to claim the whole OSDI paper. The talk is about the public Redis reproduction and the work needed before the numbers became interpretable.}
+\note{
+  Temeraire ist ein alternatives Backend für TCMalloc, also für den Speicherverwalter, den ein Programm statt der üblichen Systembibliothek verwenden kann. Es soll Speicher so platzieren, dass Hugepages besser genutzt werden und dadurch weniger Druck auf den TLB entsteht. Der TLB ist ein kleiner Prozessor-Cache für bereits bekannte Adressübersetzungen.
+  
+  \par\medskip
+  Ich reproduziere hier ausdrücklich nur den öffentlichen Redis-Teil des Papers. Die Google-Fleet-Experimente, der Produktions-Rollout und die interne Telemetrie sind nicht öffentlich verfügbar.
+  
+  \par\medskip
+  Meine konkrete Frage war deshalb: Kann ich die Redis-Methode mit öffentlichem Code und lokaler Hardware so nachbauen, dass der sehr kleine Effekt des Papers sichtbar wird?
+}
 \end{frame}
 
 \begin{frame}{Hugepages als Ausgangspunkt}
@@ -142,7 +171,15 @@
     \end{block}
   \end{column}
 \end{columns}
-\note{Make the distinction explicit: hugepages are about translation coverage. That sets up why a userspace allocator can matter at all.}
+\note{
+  Normalerweise verwaltet Linux Speicher in Seiten von vier KiB. Eine Hugepage ist zwei MiB groß und deckt damit 512 normale Seiten ab.
+  
+  \par\medskip
+  Der Vorteil ist, dass ein einzelner TLB-Eintrag wesentlich mehr Speicher adressieren kann. Es geht also nicht um einen größeren Cache, sondern um weniger Arbeit bei der Übersetzung virtueller in physische Adressen.
+  
+  \par\medskip
+  Das funktioniert allerdings nur gut, wenn die Objekte passend im Speicher angeordnet werden. Genau an dieser Stelle wird der Allocator relevant.
+}
 \end{frame}
 
 \begin{frame}{Fragmentierung innerhalb einer Hugepage}
@@ -182,7 +219,15 @@
     \end{block}
   \end{column}
 \end{columns}
-\note{This figure comes from the report. The important point is not the drawing itself, but the conflict between RAM return and translation coverage.}
+\note{
+  Hier sieht man eine vereinfachte Hugepage-Region. Oben ist die Region vollständig belegt. Unten wurden einige Objekte wieder freigegeben.
+  
+  \par\medskip
+  Obwohl jetzt freier Speicher vorhanden ist, kann die gesamte Hugepage nicht einfach als leer betrachtet werden. Es liegen weiterhin aktive Objekte dazwischen.
+  
+  \par\medskip
+  Damit entsteht ein Zielkonflikt: Gebe ich einzelne Seiten an das System zurück, kann ich die Hugepage-Abdeckung zerstören. Behalte ich alles, nutze ich mehr physischen Speicher. Temeraire versucht, neue kleine Objekte gezielt auf bereits teilweise belegte Hugepages zu packen.
+}
 \end{frame}
 
 \begin{frame}{Wo Temeraire in TCMalloc eingreift}
@@ -228,6 +273,15 @@
     \end{itemize}
   \end{column}
 \end{columns}
+\note{
+  TCMalloc besteht aus mehreren Ebenen. Oben liegen CPU-lokale und zentrale Caches. Diese schnellen Pfade verändert Temeraire nicht.
+  
+  \par\medskip
+  Temeraire ersetzt den Backend-Pageheap. Das ist vereinfacht der Vorrat größerer Speicherseiten hinter den schnellen Caches: Er fordert neue Bereiche vom Betriebssystem an und gibt ungenutzten Speicher wieder zurück.
+  
+  \par\medskip
+  Der relevante Vergleich ist deshalb nicht glibc gegen TCMalloc. Ich muss denselben historischen TCMalloc-Code einmal mit dem alten Pageheap und einmal mit dem Temeraire-Backend bauen.
+}
 \end{frame}
 
 \begin{frame}{Vier Komponenten teilen die Anfragen nach Gr\"o{\ss}e auf}
@@ -314,7 +368,15 @@
 };
 \end{tikzpicture}%
 }
-\note{This slide is the spoken legend for the previous figure. Keep it practical: allocator gets aligned hugepage ranges, cache reuses empty backed hugepages, filler handles the Redis-shaped small allocations, region catches medium allocations.}
+\note{
+  Das Temeraire-Backend besteht hauptsächlich aus diesen vier Komponenten.
+  
+  \par\medskip
+  Der \smallcode{HugeAllocator} holt ausgerichtete Hugepage-Bereiche vom System. Der \smallcode{HugeCache} bewahrt leere, bereits physisch hinterlegte Hugepages zur Wiederverwendung auf. Der \smallcode{HugeFiller} packt kleine Allokationen auf teilweise belegte Hugepages. \smallcode{HugeRegion} behandelt mittlere Allokationen, bei denen sonst zu viel ungenutzter Rest entstehen könnte.
+  
+  \par\medskip
+  Für den Redis-Workload ist vor allem \smallcode{HugeFiller} interessant, weil Redis hier viele kleine Listen- und String-Objekte erzeugt.
+}
 \end{frame}
 
 \begin{frame}{Redis-Hypothese}
@@ -346,7 +408,56 @@
 Der erwartete Unterschied liegt unter einem Prozent. Reihenfolge, THP-Zustand
 und Laufzeit-Validierung d\"urfen nicht implizit bleiben.
 \end{alertblock}
-\note{This is the handoff from mechanism to reproduction. The expected effect is small, so the rest of the talk is about removing easy sources of false signal.}
+\note{
+  Das Paper verwendet Redis 6.0.9. Der Workload schreibt mit \smallcode{LPUSH} fünf Werte in eine Liste und liest sie anschließend mit \smallcode{LRANGE 0 4}.
+  
+  \par\medskip
+  Pro Allocator-Modus werden 2.000 Trials ausgeführt, mit jeweils einer Million Requests. Die Schreib- und Leserate kombiniere ich über das harmonische Mittel.
+  
+  \par\medskip
+  Die Hypothese ist: Wenn Temeraire diese kleinen Objekte günstiger auf Hugepages verteilt, sinkt der TLB-Druck und die Redis-Rate steigt leicht.
+  
+  \par\medskip
+  Das entscheidende Wort ist leicht. Der erwartete Unterschied liegt unter einem Prozent. Schon relativ kleine Mess- oder Konfigurationsfehler können also größer sein als der gesuchte Effekt.
+}
+\end{frame}
+
+\begin{frame}{Der Vergleich hat zwei getrennte Betriebsarten}
+\begin{columns}[T,totalwidth=\textwidth]
+  \begin{column}{0.47\textwidth}
+    \begin{block}{Release-off}
+      \begin{itemize}
+        \item keine periodische Pageheap-Freigabe
+        \item freier Speicher bleibt l\"anger beim Allocator
+        \item je ein Legacy- und Temeraire-Run
+      \end{itemize}
+    \end{block}
+  \end{column}
+  \begin{column}{0.47\textwidth}
+    \begin{block}{Release-on}
+      \begin{itemize}
+        \item Background-Thread gibt Speicher periodisch zur\"uck
+        \item daf\"ur ist eine positive Rate n\"otig
+        \item je ein Legacy- und Temeraire-Run
+      \end{itemize}
+    \end{block}
+  \end{column}
+\end{columns}
+\vspace{0.5em}
+\begin{alertblock}{Zwei Dimensionen, nicht zwei Allocatoren}
+  Der Backend-Vergleich bleibt immer \textbf{Legacy gegen Temeraire}. Er wird
+  einmal ohne und einmal mit periodischer Freigabe gemessen. Das Paper nennt
+  f\"ur Release-on keine konkrete Rate.
+\end{alertblock}
+\note{
+  Bevor ich den technischen Aufbau erkläre, ist eine zweite Unterscheidung wichtig. Das Paper betrachtet den Redis-Vergleich in zwei getrennten Betriebsarten: Release-off und Release-on.
+  
+  \par\medskip
+  Release-off bedeutet, dass TCMalloc nicht regelmäßig ungenutzte Pageheap-Seiten an das Betriebssystem zurückgibt. Bei Release-on übernimmt das ein Background-Thread. Dafür reicht es nicht, den Thread nur zu starten; es muss auch eine positive Freigaberate gesetzt sein.
+  
+  \par\medskip
+  Diese Release-Einstellung ist unabhängig von der Allocator-Wahl. In jeder Betriebsart brauche ich daher ein zusammengehöriges Paar aus Legacy und Temeraire. Die späteren Ergebnisfolien behandeln zuerst Release-off und danach die korrigierten Release-on-Messungen.
+}
 \end{frame}
 
 \begin{frame}{Zwei Libraries machen den Vergleich m\"oglich}
@@ -383,14 +494,23 @@ und Laufzeit-Validierung d\"urfen nicht implizit bleiben.
 Der Wrapper ist kein neuer Allocator. Er macht den historischen TCMalloc-Code
 preloadbar, damit der Legacy-vs.-Temeraire-Pfad messbar wird.
 \end{alertblock}
+\note{
+  Redis wird nicht zweimal unterschiedlich kompiliert. Ich baue Redis einmal und erzeuge zwei TCMalloc-Shared-Libraries.
+  
+  \par\medskip
+  Beim Start von Redis wird über \smallcode{LD\_PRELOAD} entweder die Legacy- oder die Temeraire-Library geladen. \smallcode{LD\_PRELOAD} ist eine Linux-Funktion, mit der sich eine zusätzliche Programmbibliothek noch vor den normalen Bibliotheken laden lässt. Eine Shared Library ist dabei wiederverwendbarer, bereits kompilierter Code, den Redis beim Start einbindet. Dadurch bleiben Redis-Binary, Benchmark und Wrapper-Quelle gleich. Nur die Backend-Konfiguration ändert sich.
+  
+  \par\medskip
+  Der Wrapper ist dabei kein neuer Allocator. Er ist nur eine dünne Anpassungsschicht, die den historischen TCMalloc-Code als preloadbare Library verfügbar macht.
+}
 \end{frame}
 
-\begin{frame}{Der Wrapper musste in den historischen Build-Graph}
+\begin{frame}{Bazel baut die zwei TCMalloc-Varianten}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
-    \begin{block}{Problem}
-      Der Vergleich sollte nicht an selbst nachgebauten Link-Flags oder
-      unvollst\"andigen TCMalloc-Abh\"angigkeiten h\"angen.
+    \begin{block}{Rolle von Bazel}
+      Bazel ist das Build-System von TCMalloc. Es kennt dessen Quellcode,
+      Abh\"angigkeiten und Link-Regeln.
     \end{block}
     \vspace{0.45em}
     \begin{itemize}
@@ -416,84 +536,111 @@ preloadbar, damit der Legacy-vs.-Temeraire-Pfad messbar wird.
 \small
 Bazel brachte TCMallocs Build-Graphen mit: Abseil, interne Targets und
 Link-Semantik mussten nicht in CMake nachgebaut werden.
+\note{
+  Bazel ist das Build-System von TCMalloc, also das Werkzeug, das aus dem Quellcode und seinen Abhängigkeiten die fertigen Bibliotheken erzeugt. Dabei kennt es nicht nur einzelne Dateien, sondern den gesamten Abhängigkeitsgraphen des Projekts.
+  
+  \par\medskip
+  Der Wrapper wird deshalb direkt im historischen TCMalloc-Quellbaum gebaut. So kann er die vorhandenen internen Bausteine, Abseil-Abhängigkeiten und Link-Regeln verwenden. Abseil ist dabei eine Sammlung von C++-Grundbibliotheken, auf die TCMalloc aufbaut.
+  
+  \par\medskip
+  Für die Legacy-Library wird zusätzlich das Build-Ziel \smallcode{want\_no\_hpaa} eingebunden. HPAA steht hier für den Hugepage-aware Allocator, also Temeraire. Dieses Ziel deaktiviert den neuen Backend-Pfad; die andere Library behält ihn aktiv. Damit ist jetzt der komplette Sollaufbau erklärt. Als Nächstes zeige ich, wie ein Messpaar dadurch laufen sollte.
+}
 \end{frame}
 
-\begin{frame}{Startpunkt: falsche N\"ahe zum Paper}
+\begin{frame}{So sollte ein g\"ultiges Messpaar ablaufen}
+\begin{center}
+\resizebox{0.96\textwidth}{!}{%
+\begin{tikzpicture}[node distance=0.46cm and 0.46cm]
+  \node[box, minimum width=2.55cm] (setup) {\smallcode{setup\_env.sh}\\Redis 6.0.9\\TCMalloc \smallcode{8e534f...}};
+  \node[greenbox, minimum width=2.65cm, right=of setup] (libs) {Bazel im\\TCMalloc-Tree\\2 Preload-Libs};
+  \node[box, minimum width=2.45cm, right=of libs] (preload) {\smallcode{LD\_PRELOAD}\\Legacy oder\\Temeraire};
+  \node[orangebox, minimum width=2.35cm, right=of preload] (config) {Release off/on\\THP pr\"ufen};
+
+  \node[box, minimum width=2.55cm, below=0.70cm of config] (run) {\smallcode{run\_redis}\\\smallcode{LPUSH}\\\smallcode{LRANGE}};
+  \node[greenbox, minimum width=2.65cm, left=of run] (snap) {pro Run:\\\smallcode{trials.csv}\\\smallcode{summary.csv}};
+  \node[box, minimum width=2.65cm, left=of snap] (meta) {Nachweise:\\Library, Rate,\\THP/Snapshots};
+  \node[greenbox, minimum width=2.55cm, left=of meta] (agg) {Matched Pair\\Legacy vs. T\\Delta};
+
+  \draw[arrow] (setup) -- (libs);
+  \draw[arrow] (libs) -- (preload);
+  \draw[arrow] (preload) -- (config);
+  \draw[arrow] (config) -- (run);
+  \draw[arrow] (run) -- (snap);
+  \draw[arrow] (snap) -- (meta);
+  \draw[arrow] (meta) -- (agg);
+\end{tikzpicture}%
+}
+\end{center}
+\vspace{0.18em}
 \begin{columns}[T,totalwidth=\textwidth]
-  \begin{column}{0.49\textwidth}
-    \begin{block}{Vorher}
+  \begin{column}{0.48\textwidth}
+    \begin{block}{\faCogs\quad Pro Run}
+      \footnotesize
       \begin{itemize}
-        \item Redis~7.2.5 statt Redis~6.0.9
-        \item glibc gegen gperftools
-        \item kein Legacy-Pageheap gegen Temeraire
-        \item Scope war anfangs zu breit formuliert
+        \item 2000 Trials; je 1 Mio. Requests
+        \item genau eine Library und ein Release-Regime
+        \item Library, Release-Rate und THP werden best\"atigt
       \end{itemize}
     \end{block}
   \end{column}
-  \begin{column}{0.47\textwidth}
-    \begin{block}{Entscheidung}
-      Das Artefakt wird auf den Redis-Case-Study-Teil eingegrenzt.
-      Die Fleet- und Rollout-Ergebnisse bleiben au{\ss}erhalb der Reproduktion.
+  \begin{column}{0.48\textwidth}
+    \begin{block}{\faClipboardCheck\quad Pro Messpaar}
+      \footnotesize
+      \begin{itemize}
+        \item gleiche Parameter und gleiche Release-Einstellung
+        \item Legacy und Temeraire getrennt ausf\"uhren
+        \item erst danach das Delta berechnen
+      \end{itemize}
     \end{block}
-    \vspace{0.45em}
-    \begin{alertblock}{Erster Fix}
-      Erst die Behauptung begrenzen, dann die Technik bauen.
-    \end{alertblock}
   \end{column}
 \end{columns}
-\note{This slide starts the process narrative. It explains why the project was not just running an existing benchmark.}
+\note{
+  Das ist die Sollvorstellung, auf die ich mich bei den folgenden Problemen immer wieder beziehe.
+  
+  \par\medskip
+  Zuerst baut \smallcode{setup\_env.sh} Redis und die beiden TCMalloc-Libraries. Für einen einzelnen Run wähle ich genau eine Library, also Legacy oder Temeraire, und genau ein Release-Regime. Bei Release-on gehört dazu eine positive Rate. Außerdem muss THP aktiv sein. THP steht für Transparent Huge Pages: Linux versucht dabei automatisch, normalen Programmspeicher als Hugepages abzubilden.
+  
+  \par\medskip
+  Danach führt der Runner die 2.000 Trials mit \smallcode{LPUSH} und \smallcode{LRANGE} aus. Gleichzeitig speichert er die Rohdaten und die Nachweise dafür, welche Library geladen war, welche Release-Rate galt und ob Redis tatsächlich Hugepages nutzte.
+  
+  \par\medskip
+  Erst am Ende werden zwei Runs mit denselben Parametern und demselben Release-Regime als Legacy/Temeraire-Paar verglichen. Die nächsten Folien zeigen nun, an welchen Stellen dieser eigentlich einfache Ablauf zunächst nicht zuverlässig erfüllt war.
+}
 \end{frame}
 
-\begin{frame}{Umbau 1: Den richtigen Vergleich bauen}
-\begin{center}
-\begin{tikzpicture}[node distance=0.68cm]
-  \node[box, minimum width=3.0cm] (redis) {Redis~6.0.9\\pinnen};
-  \node[box, minimum width=3.2cm, right=0.7cm of redis] (tcmalloc) {TCMalloc\\\smallcode{8e534f...}};
-  \node[greenbox, minimum width=3.1cm, right=0.7cm of tcmalloc] (libs) {zwei Shared\\Libraries};
-
-  \node[orangebox, minimum width=3.1cm, below=0.78cm of libs] (preload) {Auswahl via\\\smallcode{LD\_PRELOAD}};
-  \node[greenbox, minimum width=3.1cm, left=0.7cm of preload] (legacy) {Legacy\\\smallcode{want\_no\_hpaa}};
-  \node[greenbox, minimum width=3.1cm, left=0.7cm of legacy] (tem) {Temeraire\\HPAA aktiv};
-
-  \draw[arrow] (redis) -- (tcmalloc);
-  \draw[arrow] (tcmalloc) -- (libs);
-  \draw[arrow] (libs) -- (preload);
-  \draw[arrow] (preload) -- (legacy);
-  \draw[arrow] (legacy) -- (tem);
-\end{tikzpicture}
-\end{center}
-\vspace{0.35em}
-\begin{itemize}
-  \item Der historische Commit enth\"alt noch den Schalter f\"ur den Legacy-Pfad
-  \item Beide Varianten kommen aus derselben Wrapper-Quelle
-  \item Die intendierte Differenz ist der TCMalloc-Backend-Pfad
-\end{itemize}
-\note{Stress the paired comparison. This is what makes the later result about Temeraire rather than about unrelated allocator implementations.}
-\end{frame}
-
-\begin{frame}{Fehlerbild: Build und Linkage}
+\begin{frame}{Erster Hiccup: Der Build war nicht \"ubertragbar}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
     \begin{block}{Was nicht sauber funktionierte}
       \begin{itemize}
-        \item Moderner TCMalloc-Checkout passte nicht zur Wrapper-Strategie
-        \item Externer Bazel-Wrapper erbte nicht alle Dependencies
-        \item \smallcode{want\_no\_hpaa} war nicht global sichtbar
+        \item Moderner TCMalloc-Stand passte nicht zum historischen Wrapper
+        \item Externer Wrapper erhielt nicht alle internen Abh\"angigkeiten
+        \item Legacy-Target war au{\ss}erhalb des Build-Graphen nicht sichtbar
       \end{itemize}
     \end{block}
   \end{column}
   \begin{column}{0.48\textwidth}
     \begin{block}{Was am Ende funktionierte}
       \begin{itemize}
-        \item Wrapper in \smallcode{tcmalloc/testing}
-        \item Bazelisk und Bazel-Version pinnen
-        \item LLVM-Pfad durch Make, Autotools und Bazel reichen
-        \item fehlende Release-Symbole dynamisch aufl\"osen
+        \item Wrapper im historischen TCMalloc-Quellbaum
+        \item passende Bazel-Version festlegen
+        \item denselben Compiler f\"ur alle Build-Schritte verwenden
       \end{itemize}
     \end{block}
   \end{column}
 \end{columns}
-\note{Keep this concrete. It shows why the final repo has wrapper logic and exact compiler plumbing instead of one clean build command.}
+\note{
+  Mit diesem Sollablauf im Kopf beginnt jetzt der eigentliche Reproduktionsweg. Der erste technische Hiccup lag noch vor jeder Messung und lässt sich einfacher erklären, als die Folie zunächst aussieht.
+  
+  \par\medskip
+  Mein erster Ansatz behandelte den Wrapper als eigenes Bazel-Projekt neben TCMalloc. Das klingt zunächst vernünftig, aber TCMalloc war bereits ein vollständiges Bazel-Projekt. Das zweite Projekt erbte TCMallocs interne Abhängigkeiten, Link-Regeln und Zugriffsrechte nicht automatisch. Besonders das Legacy-Ziel \smallcode{want\_no\_hpaa} war von außen nicht zugänglich.
+  
+  \par\medskip
+  Die Lösung war deshalb nicht, einen komplizierteren zweiten Bazel-Aufbau zu bauen. Stattdessen kopiert das Setup die Wrapper-Datei beim Build in den historischen TCMalloc-Quellbaum und trägt sie dort als zwei normale TCMalloc-Build-Ziele ein. Der Wrapper wird damit Teil von TCMallocs bereits vorhandenem Bazel-Projekt und kann dessen Abhängigkeiten und das interne Legacy-Ziel verwenden.
+  
+  \par\medskip
+  Wichtig ist: Die eigentliche Wrapper-Quelldatei bleibt in unserem Repository. Sie wird nur für den Build nach \smallcode{tcmalloc/testing} kopiert. Danach mussten noch die passende Bazel-Version und derselbe Compiler für alle Build-Schritte festgelegt werden. Das Grundproblem war aber die unnötige Trennung in zwei Bazel-Projekte.
+}
 \end{frame}
 
 \begin{frame}{Ein erfolgreicher Start beweist noch nicht den Allocator}
@@ -523,7 +670,18 @@ Link-Semantik mussten nicht in CMake nachgebaut werden.
     \end{center}
   \end{column}
 \end{columns}
-\note{This is a good place to mention that a benchmark can look successful while using the wrong allocator.}
+\note{
+  Nachdem der Build stand, kam der zweite Hiccup an der nächsten Stelle des Ablaufs: Ein gestarteter Redis-Prozess beweist noch nicht, welche Library er wirklich verwendet.
+  
+  \par\medskip
+  Redis kann weiterhin \smallcode{mem\_allocator: libc} ausgeben, obwohl eine TCMalloc-Library über \smallcode{LD\_PRELOAD} geladen wurde. Diese Anzeige beschreibt hauptsächlich, wie Redis gebaut wurde.
+  
+  \par\medskip
+  Deshalb prüft das Artefakt \smallcode{/proc/<pid>/maps}. Dort muss die tatsächlich gemappte Library erscheinen. Erst wenn dort entweder \smallcode{libtcmalloc\_legacy.so} oder \smallcode{libtcmalloc\_temeraire.so} steht, ist der Allocator für diesen Prozess bestätigt.
+  
+  \par\medskip
+  Ein erfolgreicher Benchmark allein wäre hier also kein ausreichender Nachweis.
+}
 \end{frame}
 
 \begin{frame}{Ohne aktive Hugepages misst der Lauf nicht Temeraire}
@@ -554,57 +712,18 @@ Sp\"atere Runs liefen mit \smallcode{[always] madvise never}; Redis-Snapshots
 zeigten 14--18 MiB \smallcode{AnonHugePages} im Prozess. Erst dann war der
 Hugepage-Pfad wirklich Teil der Messung.
 \end{block}
-\note{This is the main turning point. Earlier runs were useful engineering validation, but not evidence for the hugepage mechanism.}
-\end{frame}
-
-\begin{frame}{Der g\"ultige Lauf pr\"uft Aufbau, Mechanismus und Ergebnis}
-\begin{center}
-\resizebox{0.96\textwidth}{!}{%
-\begin{tikzpicture}[node distance=0.46cm and 0.46cm]
-  \node[box, minimum width=2.55cm] (setup) {\smallcode{setup\_env.sh}\\Redis 6.0.9\\TCMalloc \smallcode{8e534f...}};
-  \node[greenbox, minimum width=2.65cm, right=of setup] (libs) {Bazel im\\TCMalloc-Tree\\2 Preload-Libs};
-  \node[box, minimum width=2.45cm, right=of libs] (preload) {\smallcode{LD\_PRELOAD}\\Legacy oder\\Temeraire};
-  \node[orangebox, minimum width=2.35cm, right=of preload] (thp) {THP auf\\\smallcode{always}\\setzen};
-
-  \node[box, minimum width=2.55cm, below=0.70cm of thp] (run) {\smallcode{run\_redis}\\\smallcode{LPUSH}\\\smallcode{LRANGE}};
-  \node[greenbox, minimum width=2.65cm, left=of run] (snap) {pro Run:\\\smallcode{trials.csv}\\\smallcode{summary.csv}};
-  \node[box, minimum width=2.65cm, left=of snap] (meta) {Metadaten:\\\smallcode{manifest.txt}\\THP/Snapshots};
-  \node[greenbox, minimum width=2.55cm, left=of meta] (agg) {Matched Pair\\Legacy vs. T\\Delta};
-
-  \draw[arrow] (setup) -- (libs);
-  \draw[arrow] (libs) -- (preload);
-  \draw[arrow] (preload) -- (thp);
-  \draw[arrow] (thp) -- (run);
-  \draw[arrow] (run) -- (snap);
-  \draw[arrow] (snap) -- (meta);
-  \draw[arrow] (meta) -- (agg);
-\end{tikzpicture}%
+\note{
+  Die Library war nun bestätigt. Der nächste Prüfpunkt aus dem Sollablauf war der Mechanismus selbst: Nutzt Redis während des Runs überhaupt Hugepages?
+  
+  \par\medskip
+  Die Allocator-Libraries wurden korrekt geladen und Redis lief, aber die Speicher-Snapshots zeigten \smallcode{AnonHugePages: 0 kB}. Der Mechanismus, den Temeraire verbessern soll, war damit gar nicht aktiv.
+  
+  \par\medskip
+  Daraufhin habe ich den Runner um THP-Snapshots und regelmäßige \smallcode{smaps\_rollup}-Messungen erweitert. \smallcode{smaps\_rollup} ist eine zusammengefasste Speicherübersicht des laufenden Prozesses. Nach der Korrektur lief die THP-Policy auf \smallcode{always}, und Redis zeigte ungefähr 14 bis 18 MiB \smallcode{AnonHugePages}.
+  
+  \par\medskip
+  Erst diese Runs wurden für den eigentlichen Paper-Vergleich verwendet.
 }
-\end{center}
-\vspace{0.18em}
-\begin{columns}[T,totalwidth=\textwidth]
-  \begin{column}{0.48\textwidth}
-    \begin{block}{\faCogs\quad Konfiguration}
-      \footnotesize
-      \begin{itemize}
-        \item 2000 Trials; je 1 Mio. Requests
-        \item 50 Clients, Pipeline 16
-        \item ein Redis-Binary, zwei TCMalloc-\smallcode{.so}s
-      \end{itemize}
-    \end{block}
-  \end{column}
-  \begin{column}{0.48\textwidth}
-    \begin{block}{\faClipboardCheck\quad Auswertung}
-      \footnotesize
-      \begin{itemize}
-        \item LPUSH/LRANGE als harmonisches Mittel
-        \item THP und \smallcode{AnonHugePages} protokolliert
-        \item Delta nur im passenden Legacy/Temeraire-Paar
-      \end{itemize}
-    \end{block}
-  \end{column}
-\end{columns}
-\note{This slide should be explained as the actual handoff chain: setup creates two preload libraries, the runner selects one library per Redis process, and the aggregator only compares matched legacy/Temeraire summaries.}
 \end{frame}
 
 \begin{frame}{Release-on war faktisch nicht eingeschaltet}
@@ -629,7 +748,18 @@ Hugepage-Pfad wirklich Teil der Messung.
   Die alten Werte waren kein Release-on-Ergebnis. Der korrigierte Lauf setzt
   eine positive Rate explizit; das Paper nennt seine Rate nicht.
 \end{block}
-\note{This is a correction to the experimental record, not a minor caveat. The release-on logs remain useful for diagnosing the setup, but they cannot support a claim about periodic pageheap release.}
+\note{
+  Nach Library und Hugepages blieb noch der zweite Betriebsmodus aus der Setup-Folie zu prüfen: Release-on. Genau dort lag der nächste Hiccup.
+  
+  \par\medskip
+  Der TCMalloc-Background-Thread wurde zwar gestartet, aber die eigentliche Release-Rate wurde nicht gesetzt. Im historischen Commit bedeutet das eine Standardrate von null Byte pro Sekunde.
+  
+  \par\medskip
+  Der Thread verwaltete weiterhin bestimmte Caches, gab aber keine Pageheap-Bytes periodisch an das System zurück. Die bisherigen Runs mit dem Namen \smallcode{release-on} waren deshalb nicht wirklich Release-on-Runs.
+  
+  \par\medskip
+  Der korrigierte Wrapper verlangt nun eine positive Rate und bestätigt sie explizit im Redis-Log.
+}
 \end{frame}
 
 \begin{frame}{Release-off liegt nahe am kleinen Paper-Effekt}
@@ -639,13 +769,13 @@ Hugepage-Pfad wirklich Teil der Messung.
     \small
     \begin{tabular}{@{}lcc@{}}
       \toprule
-      Run & Reihenfolge & Delta \\
+      Paar & Reihenfolge & Delta \\
       \midrule
-      THP fixed-order & L first & \pct{+1.88} \\
-      balanced 1 & L first & \pct{+0.43} \\
-      balanced 2 & T first & \pct{+0.48} \\
-      balanced 3 & L first & \pct{-0.76} \\
-      balanced 4 & T first & \pct{+3.46} \\
+      Paar 1 & L first & \pct{+1.88} \\
+      Paar 2 & L first & \pct{+0.43} \\
+      Paar 3 & T first & \pct{+0.48} \\
+      Paar 4 & L first & \pct{-0.76} \\
+      Paar 5 & T first & \pct{+3.46} \\
       \bottomrule
     \end{tabular}
   \end{column}
@@ -657,65 +787,78 @@ Hugepage-Pfad wirklich Teil der Messung.
     \vspace{0.45em}
     \begin{block}{Paper-Vergleich}
       Redis$^\dagger$ im Paper: \pct{+0.75}\\
-      Periodic release disabled.
+      Periodische Freigabe deaktiviert.
     \end{block}
   \end{column}
 \end{columns}
-\note{This is the strongest result. It is still small and noisy, but it is repeatedly in the paper's direction.}
+\vspace{0.35em}
+\begin{center}
+  \footnotesize
+  \textbf{Tabelle lesen:} Jede Zeile ist ein Legacy/Temeraire-Paar.
+  Ein positives Delta bedeutet: Temeraire war schneller.
+\end{center}
+\note{
+  Damit sind die Voraussetzungen und ihre drei wichtigsten Fehlerstellen geklärt: Build, geladene Library und Laufzeitkonfiguration. Ich trenne die Ergebnisse nun wie angekündigt nach Release-Regime und beginne mit Release-off, weil dort keine positive Release-Rate konfiguriert werden muss.
+
+  \par\medskip
+  Zuerst zur Tabelle. Jede Zeile steht für ein zusammengehöriges Legacy/Temeraire-Paar. Die Spalte Reihenfolge zeigt, welcher Allocator zuerst lief: \smallcode{L first} bedeutet Legacy zuerst, \smallcode{T first} Temeraire zuerst. Das Delta ist immer Temeraire relativ zu Legacy. Ein positiver Wert bedeutet also, dass Temeraire in diesem Paar schneller war; ein negativer Wert bedeutet, dass Legacy schneller war.
+  
+  \par\medskip
+  Als Beispiel kann man \smallcode{Paar 3} lesen: Temeraire lief zuerst und war gegenüber dem dazugehörigen Legacy-Run um 0,48 Prozent schneller. Insgesamt favorisieren vier von fünf vollständigen, THP-aktiven Paare Temeraire. Der Median der fünf Deltas liegt ebenfalls bei plus 0,48 Prozent.
+  
+  \par\medskip
+  Rechts steht dann der direkte Vergleich zum Paper: Dort beträgt der Redis-Effekt bei deaktivierter periodischer Freigabe plus 0,75 Prozent. Die lokale Größenordnung passt ungefähr, aber die einzelnen Paare reichen von minus 0,76 bis plus 3,46 Prozent. Deshalb würde ich nicht sagen, dass der exakte Paper-Wert reproduziert wurde.
+}
 \end{frame}
 
-\begin{frame}{Die alten Release-on-Runs bleiben nur als Fehlerprotokoll}
-\begin{columns}[T,totalwidth=\textwidth]
-  \begin{column}{0.47\textwidth}
-    \centering
-    \color{temOrange}\fontsize{31}{34}\selectfont\faBug
-    \par\vspace{0.35em}
-    \color{temDark}\Large\smallcode{release-on}\par
-    \vspace{0.15em}
-    \normalsize effektiv \smallcode{0 B/s}
-  \end{column}
-  \begin{column}{0.49\textwidth}
-    \begin{alertblock}{Kein Paper-Vergleich}
-      Der Manifestname versprach eine Bedingung, die der Prozess nicht erf\"ullte.
-    \end{alertblock}
-    \vspace{0.4em}
-    \begin{block}{Warum die Logs bleiben}
-      Sie dokumentieren den Konfigurationsfehler und die lokale Streuung. Die
-      Deltas werden nicht als Ergebnis verwendet.
-    \end{block}
-  \end{column}
-\end{columns}
-\note{Keep the numbers visible as part of the experimental record. Their status has changed: they document the misconfigured condition, not the paper's release-on case.}
-\end{frame}
-
-\begin{frame}{Drei Release-Raten ergeben keinen stabilen Trend}
+\begin{frame}{Release-on zeigt keinen stabilen Paper-Effekt}
 \centering
 \small
 \begin{tabular}{@{}lrrrrr@{}}
   \toprule
-  Rate & Pair 1 & Pair 2 & Pair 3 & Pair 4 & Median \\
+  Rate & Paar 1 & Paar 2 & Paar 3 & Paar 4 & Median \\
   \midrule
   16 MiB/s  & \pct{+1.91} & \pct{-0.16} & \pct{-0.27} & \pct{-1.37} & \pct{-0.21} \\
   64 MiB/s  & \pct{-6.88} & \pct{+2.10} & \pct{+11.49} & \pct{+12.21} & \pct{+6.80} \\
   256 MiB/s & \pct{+15.73} & \pct{-0.09} & \pct{+0.50} & \pct{-0.77} & \pct{+0.20} \\
   \bottomrule
 \end{tabular}
-\vspace{0.55em}
+\vspace{0.25em}
+\begin{center}
+  \footnotesize
+  \textbf{Tabelle lesen:} Jede Zelle ist das Delta eines Legacy/Temeraire-Paars.
+  Positiv bedeutet: Temeraire war schneller.
+\end{center}
+\vspace{0.2em}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
-    \begin{block}{Was jetzt stimmt}
-      24 Allocator-Runs, je 2000 Trials. Jeder Redis-Log best\"atigt die
-      positive Release-Rate.
+    \begin{block}{Lokaler Befund}
+      Mediane: \pct{-0.21}, \pct{+6.80}, \pct{+0.20}. Die drei Raten ergeben
+      keinen monotonen oder stabilen Trend.
     \end{block}
   \end{column}
   \begin{column}{0.48\textwidth}
-    \begin{alertblock}{Was das Ergebnis begrenzt}
-      Kein monotoner Rate-Effekt. Absolute Leistung fiel zeitweise um mehr als
-      20\% und erholte sich sp\"ater wieder.
-    \end{alertblock}
+    \begin{block}{Paper-Vergleich}
+      Redis$^\dagger$ im Paper: \pct{+0.44}. Die lokale Matrix reproduziert
+      diesen kleinen Effekt nicht stabil.
+    \end{block}
   \end{column}
 \end{columns}
-\note{The corrected mechanism works, but the host is not stable enough for a clean sub-one-percent comparison. The 64 MiB/s median and the first 256 MiB/s pair are driven by large throughput shifts between consecutive hour-long runs.}
+\note{
+  Die alten, falsch bezeichneten Release-on-Runs bleiben zwar als Fehlerprotokoll im Repository, ihre Deltas werden aber nicht als Ergebnis verwendet. Diese Tabelle enthält nur die korrigierten Messungen mit positiver, im Server-Log bestätigter Release-Rate.
+  
+  \par\medskip
+  Auch hier beginne ich mit der Leserichtung der Tabelle. Jede Zeile ist eine getestete Release-Rate: 16, 64 oder 256 MiB pro Sekunde. Die Spalten \smallcode{Paar 1} bis \smallcode{Paar 4} sind vier getrennte Legacy/Temeraire-Paare mit wechselnder Reihenfolge. Jede Zelle verwendet dieselbe Konvention wie auf der vorherigen Folie: positiv bedeutet Temeraire schneller, negativ bedeutet Legacy schneller. Die letzte Spalte ist der Median der vier Paare dieser Rate.
+  
+  \par\medskip
+  Die erste Zeile kann man so lesen: Bei 16 MiB pro Sekunde ist Temeraire im ersten Paar 1,91 Prozent schneller, in den drei folgenden Paaren aber leicht langsamer. Deshalb liegt der Median dieser Zeile bei minus 0,21 Prozent. Insgesamt umfasst die Matrix 24 Allocator-Runs mit jeweils 2.000 Trials.
+  
+  \par\medskip
+  Danach vergleiche ich mit dem Paper. Dort liegt der Release-on-Effekt für Redis bei plus 0,44 Prozent. Lokal liegen die Mediane bei minus 0,21, plus 6,80 und plus 0,20 Prozent. Besonders die 64-MiB-Reihe streut von minus 6,88 bis plus 12,21 Prozent.
+  
+  \par\medskip
+  Es gibt damit weder einen monotonen Zusammenhang mit der Release-Rate noch eine stabile Wiederholung des kleinen Paper-Effekts. Die nächste Folie erklärt, warum die großen Ausschläge eher zur Host-Drift als zur Release-Rate passen.
+}
 \end{frame}
 
 \begin{frame}{Host-Drift ist gr\"o{\ss}er als der erwartete Effekt}
@@ -738,7 +881,18 @@ Hugepage-Pfad wirklich Teil der Messung.
 Das Artefakt rekonstruiert den Redis-Vergleich mit \"offentlichem Code.
 Der korrigierte Lauf zeigt vor allem die Grenze konsekutiver Ein-Stunden-Runs.
 \end{alertblock}
-\note{This is the thesis of the final result. Keep the wording cautious and concrete.}
+\note{
+  Bei der Betrachtung der absoluten Durchsatzwerte wurde deutlich, dass die Host-Leistung während der langen Runs stark schwankte.
+  
+  \par\medskip
+  Die Gesamtleistung fiel zeitweise um mehr als 20 Prozent und erholte sich später wieder. Das ist wesentlich größer als der Effekt von ungefähr einem halben Prozent, den wir eigentlich suchen.
+  
+  \par\medskip
+  Dadurch können zwei direkt nacheinander ausgeführte Runs unterschiedlich aussehen, obwohl sich hauptsächlich der Zustand des Hosts verändert hat. Der Host ist hier mein Windows-Rechner; Redis selbst läuft in Docker innerhalb von WSL2, also einer Linux-Umgebung unter Windows. Mögliche Ursachen sind die Verteilung der Rechenzeit durch WSL2 und Docker, CPU-Takt und Temperatur, Windows-Hintergrundlast oder dynamische Speicherverwaltung.
+  
+  \par\medskip
+  Der korrigierte Release-on-Lauf zeigt daher vor allem die Grenze dieses Messaufbaus.
+}
 \end{frame}
 
 \begin{frame}{Was diese Reproduktion nicht zeigen kann}
@@ -769,7 +923,18 @@ Der korrigierte Lauf zeigt vor allem die Grenze konsekutiver Ein-Stunden-Runs.
 Sie trennen den methodisch reproduzierten Redis-Pfad von den Teilen des Papers,
 die ohne Google-Infrastruktur nicht nachstellbar sind.
 \end{block}
-\note{Limitations define what the artifact can claim.}
+\note{
+  Die Reproduktion deckt nicht das gesamte Paper ab.
+  
+  \par\medskip
+  Nicht reproduziert wurden die Google-Fleet-Experimente, der Produktions-Rollout, interne Allocator-Binaries und die exakte Server-Hardware.
+  
+  \par\medskip
+  Zusätzlich läuft mein Aufbau unter Docker und WSL2 auf einer Consumer-CPU. THP und Kernel-Verhalten kommen aus der Host- beziehungsweise VM-Umgebung. Der öffentliche historische TCMalloc-Code ist außerdem nur eine Annäherung an Googles internes Artefakt.
+  
+  \par\medskip
+  Diese Grenzen machen den Aufbau nicht wertlos, aber sie begrenzen die Aussage: Ich kann den öffentlichen Redis-Pfad rekonstruieren, nicht die gesamte Produktionsbewertung.
+}
 \end{frame}
 
 \begin{frame}{Fazit}
@@ -794,7 +959,18 @@ die ohne Google-Infrastruktur nicht nachstellbar sind.
     \end{alertblock}
   \end{column}
 \end{columns}
-\note{Close by returning to the narrative: mechanism, broken assumptions, corrected experiment, cautious result.}
+\note{
+  Mein Fazit ist, dass der schwierige Teil nicht \smallcode{redis-benchmark} war. Der schwierige Teil war, einen echten Legacy-gegen-Temeraire-Vergleich herzustellen und danach zu beweisen, dass der gewünschte Mechanismus wirklich aktiv ist.
+  
+  \par\medskip
+  Dafür mussten der historische TCMalloc-Pfad rekonstruiert, die geladene Library validiert, THP instrumentiert und die Release-on-Konfiguration korrigiert werden.
+  
+  \par\medskip
+  Release-off zeigt ein kleines positives Mediansignal in der Größenordnung des Papers, allerdings bei deutlicher Streuung. Release-on ist jetzt technisch korrekt aktiv, liefert auf diesem Host aber kein stabiles Ergebnis, weil die Host-Drift wesentlich größer als der erwartete Effekt ist.
+  
+  \par\medskip
+  Damit ist das Ergebnis weniger eine Bestätigung einer exakten Zahl und eher eine nachvollziehbare Reproduktion des experimentellen Weges -- einschließlich der Stellen, an denen ein scheinbar funktionierender Lauf noch nicht wirklich das misst, was sein Name behauptet.
+}
 \end{frame}
 
 \end{document}
