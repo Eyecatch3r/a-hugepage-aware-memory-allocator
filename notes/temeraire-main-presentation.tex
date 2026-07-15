@@ -379,6 +379,56 @@
 }
 \end{frame}
 
+\begin{frame}{HugeFiller verbindet Temeraire mit dem Redis-Workload}
+\begin{columns}[T,totalwidth=\textwidth]
+  \begin{column}{0.43\textwidth}
+    \begin{block}{\faRoute\quad Weg einer kleinen Allokation}
+      \centering
+      \small
+      Redis-Objekt\\[0.25em]
+      $\downarrow$\\[-0.1em]
+      TCMalloc-Caches und Spans\\[0.25em]
+      $\downarrow$\\[-0.1em]
+      \smallcode{HugeFiller}\\[0.25em]
+      $\downarrow$\\[-0.1em]
+      teilweise belegte Hugepage
+    \end{block}
+    \vspace{0.35em}
+    \begin{alertblock}{Wichtige Grenze}
+      \small
+      \smallcode{HugeFiller} sieht keine Redis-Listen direkt. Er platziert die
+      kleinen Spans hinter den schnellen TCMalloc-Caches.
+    \end{alertblock}
+  \end{column}
+  \begin{column}{0.53\textwidth}
+    \begin{block}{\faCompress\quad Seine eigentliche Aufgabe}
+      \begin{itemize}
+        \item freie Bereiche in bereits belegten Hugepages nutzen
+        \item kleine Spans dichter zusammenhalten
+        \item m\"oglichst wenige Hugepages nur teilweise belegen
+      \end{itemize}
+    \end{block}
+    \vspace{0.35em}
+    \begin{block}{Warum das bei Redis helfen kann}
+      Dichtere Belegung kann mehr aktiven Speicher mit Hugepage-TLB-Eintr\"agen
+      abdecken und leere Hugepages leichter freigeben.
+    \end{block}
+  \end{column}
+\end{columns}
+\note{
+  Von den vier Komponenten ist f\"ur diesen Redis-Workload vor allem der \smallcode{HugeFiller} relevant. Dabei darf man den Weg aber nicht zu stark verk\"urzen: Der HugeFiller verwaltet nicht direkt einzelne Redis-Strings oder Listenknoten.
+
+  \par\medskip
+  Redis fordert kleine Speicherbl\"ocke an. Zuerst bedienen die schnellen TCMalloc-Schichten diese Anfragen aus CPU-lokalen oder zentralen Caches. Wenn diese Schichten neue kleine Spans aus dem Backend brauchen, kommt der HugeFiller ins Spiel. Ein Span ist hier ein zusammenh\"angender Bereich aus Speicherseiten, aus dem TCMalloc gleich gro\ss e Objekte bedient.
+
+  \par\medskip
+  Der HugeFiller versucht, solche kleinen Spans in freie Bereiche bereits teilweise belegter Hugepages zu setzen. Vereinfacht gesagt verteilt er sie nicht unn\"otig auf viele halbvolle Hugepages. Dadurch kann ein gr\"o\ss erer Anteil des aktiven Speichers durch Hugepage-TLB-Eintr\"age abgedeckt werden. Gleichzeitig steigt die Chance, dass andere Hugepages ganz leer bleiben und sp\"ater zur\"uckgegeben werden k\"onnen.
+
+  \par\medskip
+  Genau daraus entsteht die Redis-Hypothese der n\"achsten Folie: Viele kleine Allokationen erzeugen laufend Bedarf an diesen kleinen Spans. Wenn ihre Platzierung dichter ist, sollte sich das als kleiner Durchsatzvorteil zeigen. Ob dieser Effekt auf meinem Host tats\"achlich sichtbar ist, ist dann die experimentelle Frage.
+}
+\end{frame}
+
 \begin{frame}{Redis-Hypothese}
 \begin{columns}[T,totalwidth=\textwidth]
   \begin{column}{0.48\textwidth}
