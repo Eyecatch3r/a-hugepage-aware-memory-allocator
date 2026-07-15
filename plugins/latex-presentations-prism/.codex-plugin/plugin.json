@@ -1,0 +1,18 @@
+{
+  "name": "latex-presentations-prism",
+  "version": "0.1.0",
+  "description": "Latex Presentations Prism plugin",
+  "author": {
+    "name": "Local developer"
+  },
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "Latex Presentations Prism",
+    "shortDescription": "Use Latex Presentations Prism in Codex.",
+    "longDescription": "Latex Presentations Prism adds a local Codex plugin scaffold.",
+    "developerName": "Local developer",
+    "category": "Productivity",
+    "capabilities": [],
+    "defaultPrompt": "Help me use Latex Presentations Prism."
+  }
+}

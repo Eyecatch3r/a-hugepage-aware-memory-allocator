@@ -573,29 +573,45 @@ Link-Semantik mussten nicht in CMake nachgebaut werden.
 \end{center}
 \vspace{0.18em}
 \begin{columns}[T,totalwidth=\textwidth]
-  \begin{column}{0.48\textwidth}
-    \begin{block}{\faCogs\quad Pro Run}
-      \footnotesize
+  \begin{column}{0.32\textwidth}
+    \begin{block}{\faServer\quad Umgebung}
+      \scriptsize
       \begin{itemize}
-        \item 2000 Trials; je 1 Mio. Requests
-        \item genau eine Library und ein Release-Regime
-        \item Library, Release-Rate und THP werden best\"atigt
+        \item Docker: Debian 12 (bookworm)
+        \item WSL2-Kernel 6.6.114.1, x86\_64
+        \item Host-CPU: Intel i7-10700K
       \end{itemize}
     \end{block}
   \end{column}
-  \begin{column}{0.48\textwidth}
-    \begin{block}{\faClipboardCheck\quad Pro Messpaar}
-      \footnotesize
+  \begin{column}{0.32\textwidth}
+    \begin{block}{\faCogs\quad Pro Run}
+      \scriptsize
       \begin{itemize}
-        \item gleiche Parameter und gleiche Release-Einstellung
-        \item Legacy und Temeraire getrennt ausf\"uhren
-        \item erst danach das Delta berechnen
+        \item 2000 Trials; je 1 Mio. Requests
+        \item genau eine Library und ein Release-Regime
+        \item Library, Rate und THP best\"atigen
+      \end{itemize}
+    \end{block}
+  \end{column}
+  \begin{column}{0.32\textwidth}
+    \begin{block}{\faClipboardCheck\quad Pro Messpaar}
+      \scriptsize
+      \begin{itemize}
+        \item gleiche Parameter und Release-Einstellung
+        \item Legacy und Temeraire getrennt
+        \item danach Delta berechnen
       \end{itemize}
     \end{block}
   \end{column}
 \end{columns}
 \note{
   Das ist die Sollvorstellung, auf die ich mich bei den folgenden Problemen immer wieder beziehe.
+
+  \par\medskip
+  Die technische Umgebung ist dabei klar getrennt: Docker stellt mit Debian 12, genauer dem Image \smallcode{debian:bookworm-slim}, den User Space und die Werkzeuge bereit. Der Container besitzt aber keinen eigenen Linux-Kernel. Er verwendet den Kernel \smallcode{6.6.114.1-microsoft-standard-WSL2} des WSL2-Unterbaus auf dem Windows-Rechner. Die Architektur ist x86\_64; als CPU ist ein Intel Core i7-10700K sichtbar. Das Projektverzeichnis ist als \smallcode{/workspace} eingebunden, deshalb bleiben Skripte, Logs und Resultate auf dem Host erhalten.
+
+  \par\medskip
+  Diese Grenze ist f\"ur die Messung wichtig: Build-Werkzeuge und Bibliotheken kommen aus dem Debian-Container. Kernelverhalten, THP, Scheduling und die sichtbare Hardware kommen dagegen von WSL2 und dem Host. Der Container macht den Softwareaufbau reproduzierbarer, isoliert die Messung aber nicht von diesen Host-Einfl\"ussen.
   
   \par\medskip
   Zuerst baut \smallcode{setup\_env.sh} Redis und die beiden TCMalloc-Libraries. Für einen einzelnen Run wähle ich genau eine Library, also Legacy oder Temeraire, und genau ein Release-Regime. Bei Release-on gehört dazu eine positive Rate. Außerdem muss THP aktiv sein. THP steht für Transparent Huge Pages: Linux versucht dabei automatisch, normalen Programmspeicher als Hugepages abzubilden.
