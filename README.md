@@ -25,16 +25,26 @@ This artifact compares historical public TCMalloc with the legacy pageheap again
 ├── scripts/
 │   ├── check_allocator_preload.sh
 │   ├── collect_system_info.sh
+│   ├── collect_bare_metal_system_info.sh
 │   ├── run_perf.sh
 │   ├── run_redis_benchmark.sh
-│   └── setup_env.sh
+│   ├── run_paper_closer_redis_experiment.sh
+│   ├── run_bare_metal_redis_experiment.sh
+│   ├── run_bare_metal_release_on_sensitivity.sh
+│   ├── setup_env.sh
+│   └── setup_bare_metal_env.sh
 ├── docker-compose.yml
 └── README.md
 ```
 
 Third-party sources and build outputs are placed under `third_party/` after setup. Raw benchmark output is written to `results/raw/`.
 
-## Prerequisites
+The unsuffixed setup, metadata, and paper-close scripts belong to the original
+Docker/WSL workflow. Files containing `bare_metal` are the Debian scripts used
+for the node85 run. They are separate so that the cluster adaptations do not
+silently change the earlier workflow.
+
+## Docker/WSL Prerequisites
 
 - Docker Engine (Linux containers) or Docker Desktop
 - Docker Compose
@@ -81,7 +91,7 @@ Any deviation from these defaults must be recorded in the report.
 
 ## Usage
 
-### Recommended Reproduction Path
+### Docker/WSL Reproduction Path
 
 This is the primary workflow for the seminar reproduction. It is the closest
 supported path in this repository to the Redis case study described in the
@@ -132,6 +142,61 @@ release-on result:
 
 ```bash
 docker compose run --rm -e RUN_RELEASE_OFF=0 -e RUN_RELEASE_ON=1 temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh --allocator-order temeraire-first"
+```
+
+### Bare-Metal Debian Path
+
+The second workflow runs directly on Debian 13. It was added for the node85
+rerun after the Docker/WSL release-on measurements showed host drift. Use a
+directory on the node's local filesystem, such as `/var/tmp`, rather than the
+shared home directory. Bazel's output tree contains many small files and was
+markedly slower on the shared filesystem.
+
+The compute node could not fetch the pinned repositories from GitHub. The
+source archives, Bazel 4.2.2, and Bazel dependency archives were therefore
+downloaded elsewhere and copied to the node. Each staged source directory has a
+`.temeraire-source-ref` file. `setup_bare_metal_env.sh` checks that marker before
+building when `TEMERAIRE_OFFLINE_SOURCES=1`.
+
+Run the setup from the local work directory:
+
+```bash
+cd /var/tmp/temeraire-costa-20260716
+
+BUILD_EXACT_LLVM=1 \
+TEMERAIRE_OFFLINE_SOURCES=1 \
+LLVM_BOOTSTRAP_CXXFLAGS="-include cstdint" \
+BAZEL_DISTDIR="$PWD/third_party/distdir" \
+./scripts/setup_bare_metal_env.sh
+
+./scripts/check_allocator_preload.sh
+./scripts/collect_bare_metal_system_info.sh
+```
+
+The `-include cstdint` flag is a build workaround for the paper-era LLVM commit
+on Debian 13's newer host compiler. It is applied while bootstrapping LLVM; the
+pinned LLVM source revision remains `cd442157cff4aad209ae532cbf031abbe10bc1df`.
+
+Before a long run, use reduced trial and request counts to check the allocator,
+release mode, NUMA binding, THP state, and output path:
+
+```bash
+REDIS_TRIALS=2 \
+REDIS_REQUESTS_PER_TRIAL=1000 \
+PAPER_NUMA_NODE=0 \
+PAPER_BACKGROUND_RELEASE_RATE_BPS=16777216 \
+./scripts/run_bare_metal_redis_experiment.sh --allocator-order balanced
+```
+
+Remove the two reduced benchmark variables for the full 2000-trial run. The
+paper does not state a public background-release rate, so
+`PAPER_BACKGROUND_RELEASE_RATE_BPS` is a recorded local parameter rather than a
+paper-derived constant. A release-on sensitivity series can be run separately:
+
+```bash
+RELEASE_RATES_MIB="16 64 256" \
+RELEASE_SENSITIVITY_REPEATS=4 \
+./scripts/run_bare_metal_release_on_sensitivity.sh
 ```
 
 ### Trial Test Run
@@ -187,11 +252,13 @@ Tracked counters: `dTLB-load-misses`, `dTLB-loads`, `cycles`, `instructions`, `p
 | `trial-XXXX-{lpush,lrange}.csv` | Raw `redis-benchmark` CSV output per trial |
 | `redis-server.log` | Redis server log for the run |
 
-`collect_system_info.sh` writes host and container metadata to `results/raw/system-info/`.
-It records the container distribution separately from the kernel context: the
-image user space is `debian:bookworm-slim`, while the active kernel, THP state,
-cgroup behavior, and hardware-visible topology come from the Docker/WSL2 or
-host Linux environment.
+`collect_system_info.sh` writes Docker and host-kernel metadata to
+`results/raw/system-info/`. `collect_bare_metal_system_info.sh` writes the same
+class of record for a native Linux run and identifies the execution environment
+and detected virtualization. The Docker record separates the container
+distribution from the kernel context: the image user space is
+`debian:bookworm-slim`, while the active kernel, THP state, cgroup behavior, and
+hardware-visible topology come from Docker/WSL2 or the Linux host.
 
 The latest recorded system snapshot in this artifact is
 `results/raw/system-info/20260524T094418Z.txt`. Since the Docker image base has
@@ -207,6 +274,19 @@ not changed, it documents the Linux environment used for the reported runs:
 | THP enabled policy | `[always] madvise never` |
 | THP defrag policy | `[always] defer defer+madvise madvise never` |
 | `khugepaged/max_ptes_none` | `511` |
+
+The node85 setup was inspected before the full bare-metal benchmark was launched:
+
+| Field | Recorded value |
+|---|---|
+| Operating system | Debian GNU/Linux 13 (trixie) |
+| Kernel | `6.12.95+deb13-amd64` |
+| Processor | Intel Xeon Gold 5318N |
+| CPU topology | 24 cores, 48 threads, one NUMA node |
+| Memory | 188 GiB |
+| Virtualization | none detected |
+| THP enabled policy | `[always] madvise never` |
+| THP defrag policy | always defer defer+madvise `[madvise]` never |
 
 Raw outputs must not be modified. Derived tables, plots, and summaries go in `results/processed/` or `plots/generated/`.
 
