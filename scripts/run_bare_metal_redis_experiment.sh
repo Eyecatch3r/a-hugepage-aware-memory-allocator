@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Keep decimal output compatible with the CSV format used by the Docker runs.
+export LC_ALL=C
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 RESULT_BASE="${ROOT_DIR}/results/raw/paper-closer"
 timestamp="$(date -u +"%Y%m%dT%H%M%SZ")"

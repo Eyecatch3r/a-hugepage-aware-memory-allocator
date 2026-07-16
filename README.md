@@ -152,6 +152,10 @@ directory on the node's local filesystem, such as `/var/tmp`, rather than the
 shared home directory. Bazel's output tree contains many small files and was
 markedly slower on the shared filesystem.
 
+`run_bare_metal_redis_experiment.sh` sets `LC_ALL=C`. Without that setting,
+node85's German numeric locale writes decimal commas into `summary.csv`, which
+breaks its three-column CSV layout.
+
 The compute node could not fetch the pinned repositories from GitHub. The
 source archives, Bazel 4.2.2, and Bazel dependency archives were therefore
 downloaded elsewhere and copied to the node. Each staged source directory has a
