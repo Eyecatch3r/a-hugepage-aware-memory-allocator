@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Compare Temeraire Redis results from bare-metal and WSL/Docker tests.">
+  <title>Temeraire: Compare Redis results</title>
+  <link rel="stylesheet" href="assets/styles.css">
+  <script src="assets/results-data.js" defer></script>
+  <script src="assets/model.js" defer></script>
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to results</a>
+
+  <div class="app-shell" data-current-panel="overview">
+    <header class="site-header">
+      <div class="brand" aria-label="Temeraire results">
+        <span class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></span>
+        <span>Temeraire <b>/ Results</b></span>
+      </div>
+
+      <nav class="primary-nav" role="tablist" aria-label="Result views">
+        <button id="nav-overview" type="button" role="tab" data-panel="overview" aria-controls="overview" aria-selected="true">Overview</button>
+        <button id="nav-explorer" type="button" role="tab" data-panel="explorer" aria-controls="explorer" aria-selected="false" tabindex="-1">Run explorer</button>
+        <button id="nav-sensitivity" type="button" role="tab" data-panel="sensitivity" aria-controls="sensitivity" aria-selected="false" tabindex="-1">Sensitivity</button>
+        <button id="nav-method" type="button" role="tab" data-panel="method" aria-controls="method" aria-selected="false" tabindex="-1">Method</button>
+      </nav>
+
+      <label class="environment-field">
+        <span>Test environment</span>
+        <select id="environment-select" aria-label="Test environment">
+          <option value="baremetal">Bare metal</option>
+          <option value="wslDocker">WSL / Docker</option>
+        </select>
+      </label>
+    </header>
+
+    <div class="frame-progress" aria-hidden="true"><span></span></div>
+
+    <main id="main">
+      <section class="section app-panel" id="overview" role="tabpanel" aria-labelledby="nav-overview">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker" id="environment-kicker">Redis 6.0.9 · Bare metal</p>
+            <h1 id="overview-title">Compare allocator results</h1>
+          </div>
+          <p>Each point compares two matched runs. A point to the right of zero shows that Temeraire was faster.</p>
+        </div>
+
+        <div class="summary-strip" aria-label="Experiment summary">
+          <div class="metric metric-featured">
+            <span class="metric-label">Release-off median</span>
+            <strong id="hero-median">—</strong>
+            <span>throughput delta</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Positive pairs</span>
+            <strong id="hero-positive">—</strong>
+            <span>matched comparisons</span>
+          </div>
+          <div class="metric">
+            <span class="metric-label">Measured operations</span>
+            <strong id="hero-samples">—</strong>
+            <span>across tracked runs</span>
+          </div>
+          <aside class="scope-note" aria-label="Scope note">
+            <strong>Reproduction scope</strong>
+            <p id="scope-description">Native Debian 13 on node85. The test used no virtualization.</p>
+          </aside>
+        </div>
+
+        <form class="control-bar" id="overview-controls" aria-label="Historical result filters">
+          <fieldset class="segmented-field">
+            <legend>Release</legend>
+            <div class="segmented" data-control="releaseMode">
+              <button type="button" data-value="all" aria-pressed="true">All</button>
+              <button type="button" data-value="off" aria-pressed="false">Off</button>
+              <button type="button" data-value="on" aria-pressed="false">On</button>
+            </div>
+          </fieldset>
+          <label class="select-field">
+            <span>Metric</span>
+            <select id="overview-metric">
+              <option value="combined">Combined throughput</option>
+              <option value="lpush">LPUSH</option>
+              <option value="lrange">LRANGE</option>
+            </select>
+          </label>
+          <label class="select-field">
+            <span>Run order</span>
+            <select id="overview-order">
+              <option value="all">Any order</option>
+              <option value="L first">Legacy first</option>
+              <option value="T first">Temeraire first</option>
+            </select>
+          </label>
+          <label class="switch-field">
+            <input id="overview-outlier" type="checkbox" checked>
+            <span class="switch-track" aria-hidden="true"><span></span></span>
+            <span><b>Show outlier</b><small id="outlier-label">balanced 4, release on</small></span>
+          </label>
+        </form>
+
+        <div class="overview-layout">
+          <div class="chart-panel chart-panel-large">
+            <div class="chart-heading">
+              <div>
+                <p class="chart-label">Temeraire vs legacy</p>
+                <h2 id="delta-chart-title">Combined throughput delta</h2>
+              </div>
+              <div class="chart-legend" aria-label="Chart legend">
+                <span><i class="legend-dot release-off"></i> Release off</span>
+                <span><i class="legend-diamond release-on"></i> Release on</span>
+              </div>
+            </div>
+            <div class="chart-stage" id="delta-stage">
+              <svg id="delta-chart" class="chart" role="img" aria-labelledby="delta-chart-title delta-chart-desc"></svg>
+              <p id="delta-chart-desc" class="sr-only">Matched-run percentage differences between Temeraire and the legacy allocator.</p>
+              <div class="chart-tooltip" id="delta-tooltip" role="status" aria-live="polite"></div>
+            </div>
+            <div class="axis-caption"><span>Legacy faster</span><span>Temeraire faster</span></div>
+          </div>
+
+          <aside class="readout" aria-live="polite">
+            <span class="readout-index">Result summary</span>
+            <div class="readout-primary">
+              <span>Median delta</span>
+              <strong id="overview-median">—</strong>
+            </div>
+            <dl>
+              <div><dt>Positive pairs</dt><dd id="overview-positive">—</dd></div>
+              <div><dt>Observed range</dt><dd id="overview-range">—</dd></div>
+              <div><dt>Pairs shown</dt><dd id="overview-count">—</dd></div>
+            </dl>
+            <p id="overview-note">Select filters to compare a smaller set of matched runs.</p>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section app-panel" id="explorer" role="tabpanel" aria-labelledby="nav-explorer" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Matched-pair detail</p>
+            <h1 id="explorer-title">Run explorer</h1>
+          </div>
+          <p>Select a matched pair. Compare throughput, trial distributions, and process memory.</p>
+        </div>
+
+        <div class="explorer-controls">
+          <div class="explorer-toolbar">
+            <label class="select-field select-field-wide">
+              <span>Matched run</span>
+              <select id="pair-select"></select>
+            </label>
+            <fieldset class="segmented-field">
+              <legend>Measure</legend>
+              <div class="segmented" data-control="explorerMetric">
+                <button type="button" data-value="combined" aria-pressed="true">Combined</button>
+                <button type="button" data-value="lpush" aria-pressed="false">LPUSH</button>
+                <button type="button" data-value="lrange" aria-pressed="false">LRANGE</button>
+              </div>
+            </fieldset>
+          </div>
+
+          <div class="view-tabs" role="tablist" aria-label="Run detail view">
+            <button type="button" role="tab" data-view="throughput" aria-selected="true" aria-controls="explorer-panel"><span>01</span> Throughput</button>
+            <button type="button" role="tab" data-view="distribution" aria-selected="false" aria-controls="explorer-panel"><span>02</span> Distribution</button>
+            <button type="button" role="tab" data-view="memory" aria-selected="false" aria-controls="explorer-panel"><span>03</span> Memory</button>
+          </div>
+        </div>
+
+        <div class="explorer-layout" id="explorer-panel">
+          <div class="chart-panel chart-panel-large">
+            <div class="chart-heading">
+              <div>
+                <p class="chart-label" id="explorer-chart-label">Absolute requests per second</p>
+                <h2 id="explorer-chart-title">Throughput by operation</h2>
+              </div>
+              <label class="select-field memory-control" id="memory-control" hidden>
+                <span>Memory measure</span>
+                <select id="memory-metric">
+                  <option value="rssMiB">Resident memory</option>
+                  <option value="anonHugeMiB">Process huge pages</option>
+                </select>
+              </label>
+              <div class="allocator-legend" id="allocator-legend">
+                <span><i class="legend-line legacy"></i> Legacy</span>
+                <span><i class="legend-line temeraire"></i> Temeraire</span>
+              </div>
+            </div>
+            <div class="chart-stage chart-stage-tall" id="explorer-stage">
+              <svg id="explorer-chart" class="chart" role="img" aria-labelledby="explorer-chart-title explorer-chart-desc"></svg>
+              <p id="explorer-chart-desc" class="sr-only">Detailed comparison of the selected matched allocator runs.</p>
+              <div class="chart-tooltip" id="explorer-tooltip" role="status" aria-live="polite"></div>
+            </div>
+          </div>
+
+          <aside class="run-card">
+            <div>
+              <span class="run-family" id="run-family">—</span>
+              <h2 id="run-delta">—</h2>
+              <p id="run-delta-label">Temeraire combined throughput delta</p>
+            </div>
+            <dl>
+              <div><dt>Release</dt><dd id="run-release">—</dd></div>
+              <div><dt>Order</dt><dd id="run-order">—</dd></div>
+              <div><dt>Trials per run</dt><dd id="run-trials">—</dd></div>
+            </dl>
+            <div class="source-links">
+              <a id="legacy-source" href="#">Legacy summary <span aria-hidden="true">↗</span></a>
+              <a id="temeraire-source" href="#">Temeraire summary <span aria-hidden="true">↗</span></a>
+            </div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="section app-panel" id="sensitivity" role="tabpanel" aria-labelledby="nav-sensitivity" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Corrected release-on matrix</p>
+            <h1 id="sensitivity-title">Release-rate sensitivity</h1>
+          </div>
+          <p>Each point is one matched pair. The line connects the median value for each release rate.</p>
+        </div>
+
+        <div class="sensitivity-layout">
+          <div class="chart-panel chart-panel-large">
+            <div class="chart-heading">
+              <div>
+                <p class="chart-label">Background release rate</p>
+                <h2 id="sensitivity-chart-title">Combined throughput delta by release rate</h2>
+              </div>
+              <label class="select-field">
+                <span>Metric</span>
+                <select id="sensitivity-metric">
+                  <option value="combined">Combined throughput</option>
+                  <option value="lpush">LPUSH</option>
+                  <option value="lrange">LRANGE</option>
+                </select>
+              </label>
+            </div>
+            <div class="chart-stage chart-stage-tall" id="sensitivity-stage">
+              <svg id="sensitivity-chart" class="chart" role="img" aria-labelledby="sensitivity-chart-title sensitivity-chart-desc"></svg>
+              <p id="sensitivity-chart-desc" class="sr-only">Temeraire throughput deltas for each corrected background-release-rate pair.</p>
+              <div class="chart-tooltip" id="sensitivity-tooltip" role="status" aria-live="polite"></div>
+            </div>
+            <div class="chart-legend chart-legend-footer">
+              <span><i class="legend-dot raw-pair"></i> Matched pair</span>
+              <span><i class="legend-line median"></i> Rate median</span>
+            </div>
+          </div>
+          <div class="sensitivity-table-wrap">
+            <p class="chart-label">Rate medians</p>
+            <table class="data-table">
+              <thead><tr><th>Rate</th><th>Pairs</th><th>Median</th></tr></thead>
+              <tbody id="sensitivity-table"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <section class="section app-panel method-section" id="method" role="tabpanel" aria-labelledby="nav-method" hidden>
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">Method and limits</p>
+            <h1 id="method-title">Calculate and interpret the results</h1>
+          </div>
+          <p>Use these steps to calculate each result. Apply the stated limits when you interpret the result.</p>
+        </div>
+
+        <div class="method-workspace">
+          <div class="method-process">
+            <div class="method-process-heading">
+              <div>
+                <p class="section-kicker">Measurement pipeline</p>
+                <h2>Calculate a matched delta</h2>
+              </div>
+              <p>Use the same workload and one calculation rule for each pair.</p>
+            </div>
+
+            <ol class="method-flow">
+              <li><span>01</span><div><strong>Run both allocators</strong><p>Run the same Redis workload with Legacy and Temeraire.</p></div></li>
+              <li><span>02</span><div><strong>Run each operation</strong><p>Run LPUSH ×5 and LRANGE 0–4 for 2,000 trials.</p></div></li>
+              <li><span>03</span><div><strong>Calculate one rate</strong><p>Calculate the harmonic mean of the two mean request rates.</p></div></li>
+              <li><span>04</span><div><strong>Compare the pair</strong><p>Calculate the Temeraire change relative to the matched Legacy run.</p></div></li>
+            </ol>
+          </div>
+
+          <aside class="method-analysis" aria-labelledby="aggregation-title">
+            <div>
+              <p class="section-kicker">Aggregation</p>
+              <h2 id="aggregation-title">Harmonic mean</h2>
+            </div>
+            <div class="method-equation" aria-label="H equals two a b divided by a plus b">
+              <span>H(a, b)</span>
+              <strong>2ab</strong>
+              <i aria-hidden="true"></i>
+              <strong>a + b</strong>
+            </div>
+            <dl class="method-facts">
+              <div><dt>a</dt><dd>LPUSH mean requests/s</dd></div>
+              <div><dt>b</dt><dd>LRANGE mean requests/s</dd></div>
+              <div><dt>Δ</dt><dd>(Temeraire / legacy − 1) × 100</dd></div>
+            </dl>
+          </aside>
+        </div>
+
+        <div class="claim-grid" aria-label="Interpretation limits">
+          <article class="claim claim-supported">
+            <span>Supported</span>
+            <h2>The test reproduced the method</h2>
+            <p>The local test produced small effects that are similar to the effects in the Redis case study. This result occurred most often when background release was off.</p>
+          </article>
+          <article class="claim claim-limited">
+            <span>Not supported</span>
+            <h2>The test did not reproduce the fleet result</h2>
+            <p>The test hardware, kernel, workloads, telemetry, and allocator environment differ from the Google fleet.</p>
+          </article>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>Temeraire Redis reproduction artifact</p>
+      <p>Data generated <time id="generated-at">—</time></p>
+      <p><span id="panel-position">01 / 04</span> · <a href="../README.md">Reproduction guide</a></p>
+    </footer>
+  </div>
+
+  <noscript>This results explorer requires JavaScript to render its interactive charts.</noscript>
+</body>
+</html>
