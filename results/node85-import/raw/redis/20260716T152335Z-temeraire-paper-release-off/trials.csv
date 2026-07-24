@@ -1,0 +1,5 @@
+trial,operation,requests,rps
+1,lpush5,100000,446714.28
+1,lrange5,100000,752000.00
+2,lpush5,100000,562157.31
+2,lrange5,100000,1149793.12

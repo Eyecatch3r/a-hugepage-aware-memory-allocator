@@ -1,0 +1,3 @@
+operation,mean_rps,trials
+lpush5,808155.812000,10
+lrange5,1236492.488000,10

@@ -1,0 +1,65 @@
+allocator=temeraire
+allocator_note=paper-era public google/tcmalloc build using the hugepage-aware Temeraire path
+run_label=paper-release-off
+timestamp_utc=20260716T152335Z
+pid=51088
+port=6380
+trials=2
+requests_per_trial=100000
+clients=50
+pipeline=16
+numa_node=0
+snapshot_every_trials=1
+background_release_enabled=0
+background_release_rate_bps=unset
+build_exact_llvm=1
+llvm_ref_requested=cd442157cff4aad209ae532cbf031abbe10bc1df
+
+## benchmark_methodology
+Each trial runs two redis-benchmark invocations:
+1. LPUSH benchmark:list v1 v2 v3 v4 v5
+2. LRANGE benchmark:list 0 4
+
+## status
+VmSize:	   36284 kB
+VmHWM:	    6332 kB
+VmRSS:	    6332 kB
+RssAnon:	    1172 kB
+RssFile:	    5160 kB
+
+## smaps_rollup
+00400000-7ffdb89b8000 ---p 00000000 00:00 0                              [rollup]
+Rss:                6332 kB
+Pss:                3021 kB
+Pss_Dirty:          1172 kB
+Pss_Anon:           1172 kB
+Pss_File:           1849 kB
+Pss_Shmem:             0 kB
+Shared_Clean:       3888 kB
+Shared_Dirty:          0 kB
+Private_Clean:      1272 kB
+Private_Dirty:      1172 kB
+Referenced:         6332 kB
+Anonymous:          1172 kB
+KSM:                   0 kB
+LazyFree:              0 kB
+AnonHugePages:         0 kB
+ShmemPmdMapped:        0 kB
+FilePmdMapped:         0 kB
+Shared_Hugetlb:        0 kB
+Private_Hugetlb:       0 kB
+Swap:                  0 kB
+SwapPss:               0 kB
+Locked:                0 kB
+
+## thp_state
+AnonHugePages:    561152 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+[always] madvise never
+always defer defer+madvise [madvise] never
+511
