@@ -1,7 +1,35 @@
 .env
+__pycache__/
+*.pyc
 third_party/
 third_party-src-probe/
 results/raw/*
 results/processed/*
 plots/generated/*
+
+# Per-trial raw CSV files from the node85 runs. Git keeps the manifests,
+# summaries, logs, and memory samples. The per-trial files are too many for
+# Git. Get them from the result archives.
+results/node85-*/raw/redis/*/trial-*.csv
+
+# Result archives. Each archive is large. Keep the archives out of Git and
+# publish them separately.
+temeraire-node85-*.tar.gz
+temeraire-node85-*.tar.gz.sha256
+
+# LaTeX build files. Keep these patterns inside notes/ only. Redis writes
+# redis-server.log files into the result directories.
+notes/*.aux
+notes/*.bbl
+notes/*.blg
+notes/*.log
+notes/*.out
+notes/*.synctex.gz
+notes/*.fdb_latexmk
+notes/*.fls
+
+# Local build and scratch directories
+output/
+tmp/
+
 !.gitkeep

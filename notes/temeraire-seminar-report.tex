@@ -116,8 +116,7 @@ draw=myborder
 \begin{document}
 \raggedbottom
 
-\title{Reproducing the Temeraire Hugepage-Aware Allocator Results in a
-Containerized Single-Host Environment}
+\title{Reproducing the Temeraire Redis Results on WSL2 and Bare-Metal Linux}
 
 \author{Aldo Costa}
 \email{aldo.costa@hhu.de}
@@ -140,20 +139,19 @@ approximated with public code: the Redis~6.0.9 case study.
 
 The artifact evolved from a generic allocator benchmark into a Redis-focused
 reproduction by pinning Redis, selecting a historical public TCMalloc revision,
-building separate legacy and hugepage-aware shared libraries, verifying
-allocator selection through \code{LD_PRELOAD}, and documenting THP behavior
-during the benchmark. Several practical issues shaped the final setup,
-including public-code divergence from Google's internal artifact, wrapper
-visibility constraints, exact LLVM/clang matching, WSL2/Docker THP behavior,
-and a post-audit release-on configuration error.
+building separate legacy and hugepage-aware shared libraries, and checking the
+loaded allocator at runtime. Docker/WSL2 was useful for reaching a working
+experiment, but long release-on runs showed throughput changes much larger than
+the effect in the paper. This prompted a second run on a dedicated bare-metal
+Debian node.
 
-With THP active and periodic release disabled, the local median Temeraire
-advantage is $+0.48\%$, compared with the paper's $+0.75\%$. After correcting
-the release-on setup, a 24-run sensitivity matrix tested 16, 64, and
-256~MiB/s. The rate medians were $-0.21\%$, $+6.80\%$, and $+0.20\%$, but the
-large middle value coincided with severe host-throughput drift. The result is a
-public reconstruction that exposes both the allocator signal and the limits of
-consecutive hour-long measurements on Docker/WSL2.
+The native run changes the result. With periodic release disabled, the median
+Temeraire delta is $-0.34\%$ and its 95\% interval excludes the paper's
+$+0.75\%$. With release enabled at the locally chosen rate of 16~MiB/s, the
+median is $+0.55\%$, close to the paper's $+0.44\%$. Further runs at 64 and
+256~MiB/s give medians of $-0.60\%$ and $-0.08\%$. The bare-metal measurements
+remove the extreme WSL2 swings and show that the small Redis result holds in one
+release configuration rather than across modes and rates.
 \end{abstract}
 
 \begin{CCSXML} <ccs2012> <concept>
@@ -186,12 +184,11 @@ data. Those conditions are not available externally. This report therefore
 focuses on the Redis~6.0.9 case study: a public workload where the paper gives
 enough benchmark detail to support a local reproduction attempt.
 
-The goal is not to reconstruct Google's internal allocator binary. Instead, the
-artifact asks a narrower question: can the Redis comparison be approximated with
-public code closely enough to observe the same small-effect regime? That question
-required more than running a benchmark. The repository had to be reshaped, the
-allocator comparison had to be reconstructed, and the local hugepage path had to
-be verified explicitly.
+The question here is narrower than rebuilding Google's internal allocator
+binary: can the Redis comparison be approximated with public code closely enough
+to observe the same small-effect regime? Reaching that point required two
+environments. Docker/WSL2 provided the development and diagnostic stage; a
+dedicated Linux node provided the final native measurements.
 
 \section{Background and Temeraire Mechanism}
 \label{sec:background-temeraire}
@@ -203,12 +200,11 @@ working sets can require many translations. A 2~MiB hugepage covers the same
 address range as 512 ordinary pages, so one hugepage TLB entry can cover much
 more memory than one ordinary-page entry.
 
-The benefit is not that 2~MiB of data are loaded into cache at once. The benefit
-is that fewer cached address translations are needed. Whether that benefit is
-realized depends on layout: hugepage mappings require suitably aligned and
-contiguous regions. Linux Transparent Huge Pages (THP) can create such mappings,
-but its success depends partly on how the user-space allocator arranges live
-objects.
+The gain comes from needing fewer cached translations, not from loading 2~MiB of
+data into cache at once. Whether that gain is realized depends on layout:
+hugepage mappings require suitably aligned and contiguous regions. Linux
+Transparent Huge Pages (THP) can create such mappings, but its success depends
+partly on how the user-space allocator arranges live objects.
 
 \begin{figure}[t]
 \centering
@@ -300,9 +296,9 @@ central caches down to the OS pageheap.}
 \label{fig:tcmalloc}
 \end{figure}
 
-Figure~\ref{fig:tcmalloc} matters for the reproduction because Temeraire is not
-tested as a completely separate allocator. The experiment compares two backend
-configurations of TCMalloc: the legacy pageheap and the hugepage-aware path.
+This localization sets the shape of the reproduction. The experiment compares two
+backend configurations of one allocator, the legacy pageheap and the
+hugepage-aware path, rather than two separate allocators.
 
 \begin{figure}[t]
 \centering
@@ -424,18 +420,16 @@ avoids consuming long free runs unnecessarily and avoids disturbing nearly empty
 hugepages that might otherwise drain and be released.
 
 The Redis list workload in the paper performs small list-node and string-value
-allocations. Under Temeraire, these requests are expected to pass through
-\HugeFillerLabel{}; under the legacy pageheap, they are handled without the same
-hugepage-aware placement objective. The experimental hypothesis is therefore
-small and specific: if Temeraire consolidates Redis allocations more
-effectively, Redis should show a small throughput improvement from reduced TLB
-pressure.
+allocations. Under Temeraire these requests pass through \HugeFillerLabel{} and
+are subject to its placement objective; the legacy pageheap places them without
+one. Section~\ref{sec:methodology} turns that difference into the measured
+hypothesis.
 
-Periodic memory release complicates this effect. When release is enabled,
+Periodic memory release complicates the picture. When release is enabled,
 TCMalloc can return memory to the OS using mechanisms such as
-\code{MADV_DONTNEED}. This can interact with hugepage coverage and add
-variance. For this reason, the report treats release-off as the cleaner
-placement signal and release-on as a noisier condition.
+\code{MADV_DONTNEED}. Release interacts with hugepage coverage and adds
+variance, so release-off carries the cleaner placement signal of the two
+conditions.
 
 \section{Reproduction Target and Artifact Evolution}
 \label{sec:target-artifact}
@@ -445,27 +439,26 @@ production rollout. Only the Redis case study is realistic for a public seminar
 reproduction. The paper gives Redis~6.0.9, a legacy TCMalloc pageheap baseline,
 2000 \code{redis-benchmark} trials, 1,000,000 requests per trial, and a workload
 combining a five-element push with a five-element read \cite{273711}. It also
-states the CPU family and LLVM commit used for compilation. It does not specify
-the exact Linux distribution, kernel version, or THP policy for the Redis run.
-Those properties can therefore be documented locally, but not matched exactly.
+states the CPU family and LLVM commit used for compilation. The exact Linux
+distribution, kernel version, and THP policy for the Redis run are left
+unstated, so this report documents them locally instead of matching them.
 
 The repository did not initially match this target. It was a useful allocator
 benchmark scaffold, but its defaults used Redis~7.2.5, compared glibc against
 open-source gperftools TCMalloc, and did not expose a clean legacy-pageheap
-versus Temeraire comparison. The first reproduction step was therefore to narrow
-and correct the claim: the artifact would reproduce the Redis case-study
-methodology only, not the paper's full evaluation.
+versus Temeraire comparison. The first reproduction step was to narrow and
+correct the claim: the artifact would reproduce the Redis case-study methodology
+only, not the paper's full evaluation.
 
-The paper's internal allocator build is not available. The artifact therefore
-uses a historical public \code{google/tcmalloc} commit, \code{8e534f507074},
-because it still exposes the \code{want_no_hpaa} mechanism needed to disable
-the hugepage-aware path. This makes a public legacy-versus-Temeraire split
-possible, but it should not be read as byte-identical to Google's internal
-artifact.
+The paper's internal allocator build is unavailable, so the artifact uses a
+historical public \code{google/tcmalloc} commit, \code{8e534f507074}, which
+still exposes the \code{want_no_hpaa} mechanism needed to disable the
+hugepage-aware path. This makes a public legacy-versus-Temeraire split possible,
+but it should not be read as byte-identical to Google's internal artifact.
 
-The public repository also does not provide ready-made shared libraries for
-Redis preloading. The setup script therefore adds a small wrapper target inside
-the cloned TCMalloc tree and builds two loadable variants. The Temeraire build
+The public repository provides no ready-made shared libraries for Redis
+preloading. The setup script therefore adds a small wrapper target inside the
+cloned TCMalloc tree and builds two loadable variants. The Temeraire build
 links against \code{//tcmalloc}; the legacy build also links against
 \code{//tcmalloc:want_no_hpaa}. The benchmark harness selects the desired
 library through \code{LD_PRELOAD}.
@@ -481,11 +474,11 @@ through Bazel's action and repository environments, an external wrapper
 workspace did not inherit the right dependencies, and target visibility forced
 the wrapper into \code{tcmalloc/testing}.
 
-Runtime verification is necessary. Redis can still report
-\code{mem_allocator: libc} from its own build metadata even when the process
-allocator was replaced through \code{LD_PRELOAD}. The artifact therefore checks
-\code{/proc/$pid/maps} to confirm that the intended shared library is actually
-mapped into the Redis process.
+Runtime verification is necessary. Redis reports
+\code{mem_allocator: libc} from its own build metadata even when
+\code{LD_PRELOAD} has replaced the process allocator, so the artifact checks
+\code{/proc/$pid/maps} to confirm that the intended shared library is mapped
+into the Redis process.
 
 The final artifact reflects several failed or revised approaches. A modern
 \code{google/tcmalloc} checkout was not a convenient starting point for this
@@ -513,57 +506,23 @@ as authoritative.
 
 The most important methodological difficulty was THP. Initial long runs under
 WSL2/Docker with THP in \code{madvise} mode recorded \code{AnonHugePages: 0 kB}
-for Redis. These runs looked like controlled allocator comparisons, but they did
-not provide evidence that the hugepage mechanism was active. The harness was
-therefore extended to record THP settings and periodic \code{smaps_rollup}
-snapshots, and the final paper-closer runs set THP to \code{always} before
-benchmarking.
+for Redis. These runs looked like controlled allocator comparisons while leaving
+the hugepage mechanism itself unevidenced. The harness was then extended to
+record THP settings and periodic \code{smaps_rollup} snapshots, and the final
+paper-closer runs set THP to \code{always} before benchmarking. Even after that
+correction, later release-on runs showed large changes in absolute host
+throughput. That drift is what moved the same experiment to bare-metal Linux
+instead of leaving the WSL2 measurements as the final result.
 
 \section{Methodology}
 \label{sec:methodology}
 
-The final workflow has four stages: build the container, set up pinned sources,
-verify allocator preload, and run the paper-closer Redis benchmark.
+\subsection{Common benchmark path}
 
-The artifact contains two benchmark paths. The direct Redis script is mainly
-useful for smoke tests, allocator-preload validation, and exploratory local
-measurements. The final reported results use the paper-closer script. That
-orchestration fixes the Redis workload to the paper-shaped configuration,
-separates release-off and release-on runs, records known deviations and allocator
-order, supports balanced reruns, and runs after THP is set to \code{always}. Thus,
-the direct path validates that the artifact works, while the paper-closer path
-defines the runs used for comparison with the paper.
-
-The container image is based on \code{debian:bookworm-slim}, so the documented
-user-space Linux distribution for the experiment is Debian~12/bookworm. This
-does not pin the active Linux kernel. Under Docker Desktop with WSL2, Redis runs
-inside the Debian container while using the shared Docker/WSL Linux kernel.
-Kernel release, THP behavior, cgroup state, NUMA topology, and hardware-counter
-availability are therefore recorded as experimental metadata rather than treated
-as properties fixed by the Dockerfile.
-
-The latest recorded system snapshot used for the reported artifact metadata is
-\code{results/raw/system-info/20260524T094418Z.txt}. It records Debian
-GNU/Linux~12 (bookworm) user space on the WSL2 kernel
-\code{6.6.114.1-microsoft-standard-WSL2}, built on Dec.~1,~2025, for
-\code{x86_64}. The same snapshot records THP and THP defrag with
-\code{always} selected, and \code{khugepaged/max_ptes_none=511}. Since the
-Docker image base did not change, this snapshot is representative of the
-container user-space version used by the reported runs, while the kernel fields
-remain host/WSL2 environment metadata.
-
-In compact form, the working command sequence is:
-
-\begin{lstlisting}[style=commandstyle]
-docker compose build
-docker compose run --rm temeraire-dev bash -lc "./scripts/setup_env.sh"
-docker compose run --rm temeraire-dev bash -lc "./scripts/check_allocator_preload.sh"
-docker compose run --rm temeraire-dev bash -lc "echo always > /sys/kernel/mm/transparent_hugepage/enabled && echo always > /sys/kernel/mm/transparent_hugepage/defrag"
-docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh"
-\end{lstlisting}
-
-The paper-closer script runs Redis~6.0.9 with 2000 trials, 1,000,000 requests
-per trial, 50 clients, and pipeline depth~16. Each trial flushes the database
+The repository retains a short direct Redis path for smoke tests and allocator
+preload checks. Measurements reported here use the paper-closer path. It fixes
+Redis to version~6.0.9 and runs 2000 trials with 1,000,000 requests per
+operation, 50 clients, and pipeline depth~16. Each trial flushes the database
 and then benchmarks two operations:
 
 \begin{itemize}
@@ -571,19 +530,11 @@ and then benchmarks two operations:
 \item \code{LRANGE benchmark:list 0 4}.
 \end{itemize}
 
-The script records software versions, CPU information, kernel and OS metadata,
-THP settings, Redis version, TCMalloc commit, compiler metadata, allocator
-artifacts, raw benchmark output, and memory snapshots. Balanced reruns alternate
-which allocator runs first so that a sub-one-percent signal is less likely to be
-confused with fixed-order host drift.
-
-The metadata collection distinguishes the container OS from the active kernel:
-it records the Debian container release, Debian version, Docker/container
-markers, shared kernel release and version, cgroup context, CPU model, memory
-summary, THP settings, Redis version, TCMalloc commit, compiler versions, and
-allocator artifacts. This distinction matters because the experiment used
-Debian bookworm user space, but hugepage behavior came from the shared Linux
-kernel visible to Docker/WSL2.
+The runner stores the raw output of every operation as well as summary files,
+Redis logs, memory snapshots, allocator order, software revisions, and system
+metadata. Allocator order alternates between pairs. This does not remove drift
+between two consecutive blocks, but it avoids assigning the same allocator to
+the later position every time.
 
 The primary metric is throughput in requests per second from
 \code{redis-benchmark}. LPUSH and LRANGE are collapsed into a combined
@@ -599,15 +550,29 @@ paper. It is a local reconstruction choice because our public
 means, while the paper reports one Redis throughput delta for the combined
 push-five/read-five workload.
 
-The hypothesis is deliberately modest. Redis creates a stream of small
-allocations. Under Temeraire, these allocations are subject to
-\HugeFillerLabel{}'s placement heuristic; under the legacy pageheap, they are
-not. If Temeraire improves hugepage coverage for this workload, Redis should
-show a small positive throughput delta. The effect is expected to be clearest
-with periodic release disabled, because release-on adds interaction with
-background memory return and can disrupt or mask the placement signal.
+The hypothesis is modest, and follows from
+Section~\ref{sec:background-temeraire}. If the placement heuristic in
+\HugeFillerLabel{} improves hugepage coverage for the stream of small
+allocations that Redis creates, Redis should show a small positive throughput
+delta against the legacy pageheap. The effect should be clearest with periodic
+release disabled, since release-on adds interaction with background memory
+return and can mask the placement signal.
 
-\subsection{Post-audit correction to the release-on condition}
+\subsection{Docker/WSL2 development stage}
+
+The first complete setup used a Debian~12 container on Docker Desktop and its
+shared WSL2 kernel. It was where the pinned builds, preload checks, benchmark
+parameters, THP instrumentation, and balanced ordering were developed. Once
+THP was set to \code{always}, Redis reported non-zero hugepage use.
+
+The container remained useful as a reproducible development environment, but
+it was a poor endpoint for this particular measurement. Several hour-long
+release-on blocks changed in absolute throughput while the allocator was held
+constant. The largest apparent Temeraire improvements occurred while the host
+was recovering from a slower period. This made the allocator delta inseparable
+from the time at which each block happened.
+
+\subsection{Post-audit correction to release-on}
 
 The initial analysis treated runs labelled \code{paper-release-on} as periodic
 release experiments. A later code audit showed that this label was wrong. The
@@ -616,12 +581,10 @@ background release rate. The pinned public TCMalloc revision initializes that
 rate to zero. Its background loop therefore continued per-CPU-cache
 maintenance, but calculated zero bytes for the pageheap release call.
 
-The existing release-on logs remain part of the experimental record, including
-the $-12.02\%$ run and its targeted rerun. They do not measure periodic pageheap
-release and cannot be compared with the paper's $+0.44\%$ Redis result. A
-corrected experiment must set and record a positive release rate. Since the
-paper does not publish that rate, the chosen value will remain an explicit
-local assumption and should be tested across several rates.
+The existing logs remain part of the record, including a $-12.02\%$ run and its
+targeted rerun. They do not measure periodic pageheap release and are excluded
+from paper comparison. The paper does not publish its release rate, so every
+corrected run records the chosen rate as a local experimental parameter.
 
 The correction itself became another part of the reproduction work. The first
 smoke test showed that the wrapper's dynamic symbol lookups had been failing
@@ -629,100 +592,265 @@ silently, so the wrapper was changed to call the linked TCMalloc API directly.
 It also revealed that \code{LD\_PRELOAD} had leaked from the Redis server to
 \code{redis-cli} and \code{redis-benchmark}; the preload is now scoped to the
 server process. Rebuilding required one more Bazel dependency fix, followed by
-Linux line-ending cleanup for the container scripts. The corrected run was only
-started after both allocator smoke tests logged the requested positive rate.
+Linux line-ending cleanup for the container scripts. Corrected runs were started
+only after both allocator smoke tests logged the requested positive rate.
 
-The completed sensitivity matrix contains four alternating-order allocator
-pairs at each of 16, 64, and 256~MiB/s, for 24 allocator runs in total. Every
-run contains 2000 trials and an explicit server-log confirmation of its rate.
+\subsection{Bare-metal Linux stage}
+
+The WSL2 drift motivated a second workflow rather than a change to the existing
+container scripts. The native scripts preserve the same pinned source revisions,
+allocator wrappers, Redis workload, result layout, and balanced pair structure.
+They run directly on the dedicated node described in
+Table~\ref{tab:bare-metal-setup}.
+
+\begin{table}[ht]
+\caption{Recorded bare-metal environment on node85.}
+\label{tab:bare-metal-setup}
+\footnotesize
+\begin{tabular}{@{}lp{0.57\columnwidth}@{}}
+\toprule
+Field & Recorded value \\
+\midrule
+OS & Debian GNU/Linux 13 (trixie) \\
+Kernel & \code{6.12.95+deb13-amd64} \\
+Processor & Intel Xeon Gold 5318N \\
+Topology & 24 cores, 48 threads, one NUMA node \\
+Memory & 188~GiB \\
+Virtualization & none detected \\
+THP & \code{always}; defrag \code{madvise} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The move exposed a different set of practical problems. The shared home
+directory was too slow for Bazel's many small files, so the build and runs were
+moved to \code{/var/tmp}. The compute node could not fetch the pinned sources,
+which meant staging source and dependency archives for an offline build. The old
+LLVM revision also needed \texttt{-include cstdint} to build with Debian~13's
+host compiler. Finally, the German locale produced decimal commas in CSV files;
+the native runner now sets \code{LC_ALL=C}.
+
+Three two-trial smoke runs and two ten-trial pilots came first. Four full
+balanced pairs then ran at 16~MiB/s, each pair covering legacy and Temeraire
+with release disabled and enabled. A second series kept release enabled and
+added four order-alternated pairs at 64~MiB/s and four at 256~MiB/s. All full
+allocator blocks contain 2000 trials, and each release-on Redis log confirms the
+requested rate. The archive holds 64,000 trial rows for the main four pairs and
+another 64,000 for the two added rates. A standard-library audit script
+re-derives every block mean from the raw trial files, checks trial identifiers,
+request counts, file counts, memory samples, THP state, release-rate
+confirmations, clean shutdowns, allocator order, and system metadata, and fails
+on any mismatch. Both halves of the archive pass.
 
 \section{Results}
 \label{sec:results}
 
-The release-off analysis uses runs produced through the paper-closer workflow.
-Earlier direct-path runs are treated as environment validation and workflow
-development artifacts. The misconfigured release-on runs appear only to retain
-the audit trail; they are not paper-comparable measurements.
-Likewise, earlier paper-closer attempts with \code{AnonHugePages: 0 kB} are
-useful workflow validation, but not evidence for the hugepage mechanism. After
-THP was set to \code{always}, the reported runs showed non-zero
-\code{AnonHugePages} in Redis snapshots.
+\subsection{What the WSL2 runs showed}
+
+The WSL2 measurements remain useful because they explain the native rerun. With
+release disabled, five THP-enabled pairs produced a median of $+0.48\%$, close
+to the paper's $+0.75\%$, but individual pairs ranged from $-0.76\%$ to
+$+3.46\%$. The corrected release-on sweep was less credible. Its 16~MiB/s
+median was $-0.21\%$ with one pair at $-7.09\%$; the 64~MiB/s median reached
+$+6.80\%$; and one 256~MiB/s pair reached $+15.73\%$. Absolute throughput
+changed by more than 200~kRPS over the series and later recovered. Those swings
+dwarf the paper's $+0.44\%$ result. The earlier zero-rate run containing the
+$-12.02\%$ value stays in the protocol as a record of the discovered
+misconfiguration and stays out of the comparison.
+
+The WSL2 stage therefore left an awkward picture: release-off seemed to agree
+with the paper, while the release-on data mainly measured when a block happened
+to run. Moving to node85 tested whether the small positive result would remain
+once the container, WSL2 kernel, and competing desktop load were removed.
+
+\subsection{Bare-metal main run}
+
+Table~\ref{tab:bare-metal-pairs} gives the four native pairs. A positive value
+means that Temeraire was faster than the matched legacy run. ``L first'' and
+``T first'' describe the execution order within that pair. The release-on column
+uses the locally chosen rate of 16~MiB/s; release-off applies no rate.
 
 \begin{table}[ht]
-\caption{Run-level Temeraire throughput deltas in THP-enabled runs. L first
-and T first denote allocator order. Off is the valid release-disabled
-condition. The on column is retained as a record of the misconfigured
-zero-release-rate runs and is not a paper-comparable result.}
-\label{tab:run-deltas}
+\caption{Bare-metal Temeraire throughput deltas. The release-on column uses a
+16~MiB/s background release rate.}
+\label{tab:bare-metal-pairs}
 \footnotesize
 \begin{tabular}{@{}lccc@{}}
 \toprule
-Run & Order & Off & On \\
+Pair & Order & Release off & Release on \\
 \midrule
-fixed-order & L first & $+1.88\%$ & $+0.26\%$ \\
-balanced 1  & L first & $+0.43\%$ & $+0.12\%$ \\
-balanced 2  & T first & $+0.48\%$ & $+0.38\%$ \\
-balanced 3  & L first & $-0.76\%$ & $-2.34\%$ \\
-balanced 4  & T first & $+3.46\%$ & $-12.02\%$ \\
-targeted on & T first & --        & $+0.12\%$ \\
+1 & L first & $+0.241\%$ & $+1.319\%$ \\
+2 & T first & $+0.002\%$ & $+0.149\%$ \\
+3 & L first & $-0.684\%$ & $-0.358\%$ \\
+4 & T first & $-0.686\%$ & $+0.942\%$ \\
+\midrule
+Mean   & & $-0.282\%$ & $+0.513\%$ \\
+Median & & $-0.341\%$ & $+0.545\%$ \\
+95\% interval & & $[-1.04,+0.48]$ & $[-0.69,+1.73]$ \\
+Paper  & & $+0.75\%$  & $+0.44\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Table~\ref{tab:run-deltas} shows the valid release-off comparisons and preserves
-the invalid release-on values for traceability. Four of five release-off runs
-favor Temeraire, and the median delta is $+0.48\%$, compared with the paper's
-$+0.75\%$ Redis\textsuperscript{\textdagger} result. The local pairs vary from
-$-0.76\%$ to $+3.46\%$, so this is a descriptive small-effect signal rather
-than a precise reproduction of the paper's value.
+Absolute throughput on node85 was stable. All sixteen allocator blocks landed
+between 989 and 1003~kRPS combined, a total spread of about $1.4\%$, against the
+200~kRPS swings recorded under WSL2. The percentage deltas therefore sit on a
+quiet baseline. Figure~\ref{fig:bare-metal-distributions} shows the cost of that
+stability: the per-trial distributions inside each block still span roughly
+$5\%$, so the pairwise means separate distributions that overlap almost
+completely.
 
-The release-on column is not interpreted as an allocator result. Balanced
-rerun~4 produced a $-12.02\%$ delta, and the targeted rerun returned $+0.12\%$,
-but both ran with a zero pageheap release rate. These values describe the
-misconfigured condition only; the targeted rerun does not repair the missing
-release-rate control.
+\begin{figure}[t]
+\centering
+\begin{tikzpicture}[x=1cm, y=0.048cm]
+\tikzset{
+  whisker/.style={draw=myborder, line width=0.5pt},
+  boxlegacy/.style={draw=myborder, fill=mygrayfill, line width=0.5pt},
+  boxtemeraire/.style={draw=myblue, fill=mybluefill, line width=0.5pt},
+  medianline/.style={draw=myborder, line width=1.0pt}
+}
+
+\draw[draw=myborder, line width=0.5pt] (0.38,0) -- (0.38,66);
+\foreach \value/\offset in {960/0, 980/20, 1000/40, 1020/60} {
+  \draw[draw=myborder, line width=0.5pt] (0.30,\offset) -- (0.38,\offset);
+  \node[labelbox, anchor=east] at (0.28,\offset) {\value};
+}
+\node[labelbox, rotate=90, anchor=south] at (-0.30,33) {combined kRPS};
+
+% balanced run 3, legacy
+\draw[whisker] (0.870,7.57) -- (0.870,24.83);
+\draw[whisker] (0.870,50.30) -- (0.870,57.39);
+\draw[whisker] (0.780,7.57) -- (0.960,7.57);
+\draw[whisker] (0.780,57.39) -- (0.960,57.39);
+\draw[boxlegacy] (0.650,24.83) rectangle (1.090,50.30);
+\draw[medianline] (0.650,42.59) -- (1.090,42.59);
+% balanced run 3, temeraire
+\draw[whisker] (1.430,11.54) -- (1.430,25.87);
+\draw[whisker] (1.430,49.16) -- (1.430,55.80);
+\draw[whisker] (1.340,11.54) -- (1.520,11.54);
+\draw[whisker] (1.340,55.80) -- (1.520,55.80);
+\draw[boxtemeraire] (1.210,25.87) rectangle (1.650,49.16);
+\draw[medianline] (1.210,43.06) -- (1.650,43.06);
+% balanced run 4, legacy
+\draw[whisker] (2.170,17.10) -- (2.170,33.67);
+\draw[whisker] (2.170,56.92) -- (2.170,63.08);
+\draw[whisker] (2.080,17.10) -- (2.260,17.10);
+\draw[whisker] (2.080,63.08) -- (2.260,63.08);
+\draw[boxlegacy] (1.950,33.67) rectangle (2.390,56.92);
+\draw[medianline] (1.950,51.29) -- (2.390,51.29);
+% balanced run 4, temeraire
+\draw[whisker] (2.730,18.53) -- (2.730,28.80);
+\draw[whisker] (2.730,54.83) -- (2.730,61.11);
+\draw[whisker] (2.640,18.53) -- (2.820,18.53);
+\draw[whisker] (2.640,61.11) -- (2.820,61.11);
+\draw[boxtemeraire] (2.510,28.80) rectangle (2.950,54.83);
+\draw[medianline] (2.510,48.07) -- (2.950,48.07);
+% balanced run 5, legacy
+\draw[whisker] (3.470,14.39) -- (3.470,29.72);
+\draw[whisker] (3.470,49.90) -- (3.470,55.79);
+\draw[whisker] (3.380,14.39) -- (3.560,14.39);
+\draw[whisker] (3.380,55.79) -- (3.560,55.79);
+\draw[boxlegacy] (3.250,29.72) rectangle (3.690,49.90);
+\draw[medianline] (3.250,44.05) -- (3.690,44.05);
+% balanced run 5, temeraire
+\draw[whisker] (4.030,4.33) -- (4.030,21.44);
+\draw[whisker] (4.030,49.25) -- (4.030,55.80);
+\draw[whisker] (3.940,4.33) -- (4.120,4.33);
+\draw[whisker] (3.940,55.80) -- (4.120,55.80);
+\draw[boxtemeraire] (3.810,21.44) rectangle (4.250,49.25);
+\draw[medianline] (3.810,41.64) -- (4.250,41.64);
+% balanced run 6, legacy
+\draw[whisker] (4.770,17.24) -- (4.770,28.68);
+\draw[whisker] (4.770,55.24) -- (4.770,62.00);
+\draw[whisker] (4.680,17.24) -- (4.860,17.24);
+\draw[whisker] (4.680,62.00) -- (4.860,62.00);
+\draw[boxlegacy] (4.550,28.68) rectangle (4.990,55.24);
+\draw[medianline] (4.550,47.72) -- (4.990,47.72);
+% balanced run 6, temeraire
+\draw[whisker] (5.330,7.25) -- (5.330,21.54);
+\draw[whisker] (5.330,50.69) -- (5.330,56.91);
+\draw[whisker] (5.240,7.25) -- (5.420,7.25);
+\draw[whisker] (5.240,56.91) -- (5.420,56.91);
+\draw[boxtemeraire] (5.110,21.54) rectangle (5.550,50.69);
+\draw[medianline] (5.110,42.17) -- (5.550,42.17);
+
+\foreach \x/\label in {1.15/1, 2.45/2, 3.75/3, 5.05/4} {
+  \node[labelbox] at (\x,-7) {Pair \label};
+}
+
+\node[boxlegacy, minimum width=0.32cm, minimum height=0.20cm,
+      inner sep=0pt] at (1.55,-16) {};
+\node[labelbox, anchor=west] at (1.75,-16) {legacy};
+\node[boxtemeraire, minimum width=0.32cm, minimum height=0.20cm,
+      inner sep=0pt] at (3.35,-16) {};
+\node[labelbox, anchor=west] at (3.55,-16) {Temeraire};
+
+\end{tikzpicture}
+\caption{Per-trial combined throughput for the four release-off pairs on node85.
+Boxes span the interquartile range, whiskers the 5th to 95th percentile, and the
+heavy line the median of 2000 trials. Within-block spread is roughly $5\%$, an
+order of magnitude wider than the pairwise deltas in
+Table~\ref{tab:bare-metal-pairs}.}
+\Description{Eight box-and-whisker plots, one legacy and one Temeraire block for
+each of four matched pairs, showing heavily overlapping throughput
+distributions.}
+\label{fig:bare-metal-distributions}
+\end{figure}
+
+The release-off result no longer supports the positive WSL2 median. Two pairs
+are effectively neutral or slightly positive and two are negative, giving a
+median of $-0.34\%$ and an approximate run-level 95\% interval of
+$[-1.04\%,+0.48\%]$. That interval excludes the paper's $+0.75\%$, so the native
+release-off aggregate is inconsistent with the paper's release-off row rather
+than merely quieter than it.
+
+Release-on at 16~MiB/s points the other way. Three of four pairs favor
+Temeraire, with a mean of $+0.51\%$ and a median of $+0.55\%$, both close to the
+paper's $+0.44\%$. The numerical match should not be overstated: the approximate
+95\% interval of $[-0.69\%,+1.73\%]$ rests on four pairs and also covers zero.
+The 2000 sequential trials inside one allocator block are autocorrelated, and
+count as one replication rather than 2000.
+
+\subsection{Bare-metal release-rate sensitivity}
+
+The 16~MiB/s release-on column in Table~\ref{tab:bare-metal-pairs} uses a rate
+that the paper never specified. Table~\ref{tab:bare-metal-sensitivity} checks
+whether its positive result survives at two higher rates. Its first row repeats
+the release-on column of Table~\ref{tab:bare-metal-pairs} for comparison; the
+other two rows are additional runs.
 
 \begin{table}[ht]
-\caption{Paper comparison and local interpretation.}
-\label{tab:paper-compare}
+\caption{Bare-metal release-on sensitivity. Each cell compares Temeraire with
+the matched legacy block; the four pairs alternate allocator order. The
+16~MiB/s row repeats Table~\ref{tab:bare-metal-pairs}.}
+\label{tab:bare-metal-sensitivity}
 \footnotesize
-\begin{tabular}{@{}lccp{0.34\columnwidth}@{}}
+\begin{tabular}{@{}lrrrrrr@{}}
 \toprule
-Mode & Paper & Local summary & Interpretation \\
+Rate & Pair 1 & Pair 2 & Pair 3 & Pair 4 & Mean & Median \\
 \midrule
-off & $+0.75\%$ & median $+0.48\%$ & small, highly variable signal \\
-on  & $+0.44\%$ & rate sweep completed & host drift dominates \\
+16 MiB/s  & $+1.319\%$ & $+0.149\%$ & $-0.358\%$ & $+0.942\%$ & $+0.513\%$ & $+0.545\%$ \\
+64 MiB/s  & $-0.631\%$ & $-0.094\%$ & $-0.674\%$ & $-0.574\%$ & $-0.494\%$ & $-0.603\%$ \\
+256 MiB/s & $-0.028\%$ & $+0.402\%$ & $-0.133\%$ & $-1.419\%$ & $-0.294\%$ & $-0.080\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\begin{table}[ht]
-\caption{Corrected release-on sensitivity results. Each cell is the Temeraire
-throughput delta against its paired legacy run.}
-\label{tab:release-sensitivity}
-\footnotesize
-\begin{tabular}{@{}lrrrrr@{}}
-\toprule
-Rate & Pair 1 & Pair 2 & Pair 3 & Pair 4 & Median \\
-\midrule
-16 MiB/s  & $+1.91\%$ & $-0.16\%$ & $-0.27\%$ & $-1.37\%$ & $-0.21\%$ \\
-64 MiB/s  & $-6.88\%$ & $+2.10\%$ & $+11.49\%$ & $+12.21\%$ & $+6.80\%$ \\
-256 MiB/s & $+15.73\%$ & $-0.09\%$ & $+0.50\%$ & $-0.77\%$ & $+0.20\%$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+All four 64~MiB/s pairs favor legacy TCMalloc, and their 95\% interval,
+$[-0.92\%,-0.07\%]$, excludes zero. That rate is the only condition in the study
+where Temeraire is separable from the baseline, and it separates in the losing
+direction. At 256~MiB/s three pairs are negative and one is positive; the
+$-1.419\%$ pair drives the negative mean, and its interval,
+$[-1.54\%,+0.96\%]$, is uninformative. Inspection by trial quarter rules out a
+short collapse in that block, with Temeraire between $1.2\%$ and $1.8\%$ slower
+in each quarter. The sequence is not monotonic: performance changes sign between
+16 and 64~MiB/s, then moves back toward zero at 256~MiB/s.
 
-The sensitivity results are not monotonic. The 16~MiB/s pairs are centered near
-zero, as are three of four 256~MiB/s pairs. The 64~MiB/s range spans
-$-6.88\%$ to $+12.21\%$. During those runs, absolute combined throughput fell
-from about 978~kRPS to 753~kRPS and later recovered above 950~kRPS. The first
-256~MiB/s pair shows a similar recovery. These shifts are much larger than the
-paper's $+0.44\%$ effect and track run time more plausibly than release rate.
-
-With THP active, the release-off comparison lands in the paper's small-effect
-regime, but the run-to-run spread is larger than the median effect. Corrected
-release-on is now measured, but host drift prevents a stable rate-dependent
-conclusion.
+The dedicated node removes the double-digit changes seen under WSL2 and replaces
+one allocator verdict with three, each tied to a configuration. Release-off is
+slightly negative, release-on at 16~MiB/s is close to the paper, and the two
+higher-rate aggregates are negative. For release-on the result depends on a
+parameter the paper omits.
 
 \section{Discussion and Related Work}
 \label{sec:discussion-related}
@@ -732,26 +860,32 @@ as the public artifact allowed: the allocator split had to be rebuilt from
 public code, preload had to be verified at runtime, the compiler path had to be
 documented, and THP activity had to be observed rather than assumed.
 
-The release-off result is consistent with the mechanism claimed in the paper. A
-recurring positive signal in the same sub-one-percent range suggests that the
-Redis effect is not obviously limited to Google's production environment.
-However, the result still comes from a consumer i7-10700K host under Docker and
-WSL2, not from the paper's Skylake Xeon server environment.
+The move to bare metal settles one question raised by WSL2. The double-digit
+release-on deltas belonged to the host, not to Temeraire: native results stay
+within $1.5\%$ across every pair. The move also weakens the earlier release-off
+story, turning a positive WSL2 median into a negative native median. The
+environment was doing more than adding noise around a fixed result; it was
+setting the sign.
 
-The corrected release-on matrix does not reproduce a stable $+0.44\%$ effect.
-Its strongest apparent improvements occur in pairs where absolute host
-throughput recovered between consecutive allocator runs. Shorter interleaved
-blocks, CPU isolation, and a native Linux host would reduce this confounding.
-Future runs should also collect \code{/proc/vmstat} hugepage counters, load
-average, CPU frequency, and I/O activity throughout the benchmark.
+The release-on match at 16~MiB/s is encouraging but conditional. Since the paper
+omits its rate, 16~MiB/s has no claim to being the paper's setting, and the
+negative 64 and 256~MiB/s aggregates confine the numerical agreement to that one
+value. These data support a narrower claim: the public reconstruction can produce
+the paper's small positive effect under one recorded configuration.
 
-The main limitation remains environmental fidelity. The paper specifies the
-Redis version, benchmark shape, CPU family, LLVM commit, and optimization level,
-but not the exact Linux distribution, kernel version, or THP policy for the
-Redis experiment. Docker, WSL2, consumer hardware, physical memory
-fragmentation, NUMA behavior, and hardware counter semantics can all affect
-hugepage experiments. The public TCMalloc commit is also only a historical
-approximation of the paper's internal allocator artifact.
+Four pairs per condition remain few for sub-one-percent effects. Allocator blocks
+run consecutively, so slow changes in frequency, temperature, or system activity
+can survive inside a pair. The recorded metadata omits CPU governor, turbo state,
+temperature, and per-block allocator mappings; preload was verified once before
+the run rather than inside every result directory.
+
+Environmental fidelity also remains limited. The paper specifies the Redis
+version, benchmark shape, CPU family, LLVM commit, and optimization level, and
+leaves the Linux distribution, kernel, THP policy, and background release rate
+for Redis unstated. Node85 removes Docker and virtualization, while its Xeon
+model and Linux stack still differ from the paper's environment. The public
+TCMalloc revision remains a historical approximation of Google's internal
+allocator.
 
 Temeraire sits alongside other memory-management work on huge pages.
 SuperMalloc uses huge pages for very large allocations but does not make the
@@ -768,21 +902,26 @@ allocator-side placement
 \section{Conclusion}
 \label{sec:conclusion}
 
-This report should be read primarily as a reproduction of the Redis artefact.
-The original repository was not yet a Temeraire Redis reproduction. It had to be
-narrowed to the public Redis case study and adapted to Redis~6.0.9. It also had
-to shift from glibc and gperftools comparisons to legacy TCMalloc versus
-Temeraire, with historical TCMalloc builds, wrapper libraries, preload checks,
-compiler metadata, THP controls, and memory instrumentation.
+This report covers the Redis case study alone. The original repository began as a
+generic allocator benchmark and had to be narrowed to that case study, moved to
+Redis~6.0.9, and shifted from glibc and gperftools comparisons to legacy TCMalloc
+versus Temeraire, with historical TCMalloc builds, wrapper libraries, preload
+checks, compiler metadata, THP controls, and memory instrumentation.
 
-After those changes, the release-off Redis result falls into the same
-small-effect regime as the paper: a local median of $+0.48\%$ against the
-paper's $+0.75\%$, with substantial variation across the five run pairs. The
-corrected release-on matrix verifies that periodic release is active, but its
-rate medians do not form a stable trend and several pairs are dominated by host
-drift. The artifact reconstructs the public Redis path and documents where
-local measurement fidelity becomes the limiting factor. It does not validate
-Google's fleet-scale claims or reproduce the exact production-era measurements.
+The WSL2 stage produced a working and instrumented experiment, but host drift
+made its release-on sweep unsuitable as final evidence. Repeating the same
+workload on dedicated bare-metal Linux removed those extreme swings and changed
+the interpretation. Release-off has a median of $-0.34\%$ against the paper's
+$+0.75\%$, with a 95\% interval that excludes the paper's value. Release-on at
+16~MiB/s has a median of $+0.55\%$, close to the paper's $+0.44\%$, while the
+medians at 64 and 256~MiB/s are $-0.60\%$ and $-0.08\%$.
+
+The reproduction therefore reaches the same small positive Redis regime under one
+explicit release configuration rather than across the experiment as a whole. Its
+main contribution is the path from an unsuitable starting artifact, through build
+and release-control failures, to a native run whose raw data and settings can be
+audited. Google's fleet-scale claims and the production-era environment stay
+outside its reach.
 
 \clearpage
 \hbadness=10000

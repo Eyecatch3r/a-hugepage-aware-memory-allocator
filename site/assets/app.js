@@ -187,12 +187,10 @@
     if (!data.outlier) {
       setText("overview-note", "Select filters to compare a smaller set of matched runs.");
     } else {
-      setText(
-        "overview-note",
-        state.includeOutlier
-          ? "The chart includes the identified outlier. Clear Show outlier to remove it."
-          : "The chart does not include the identified outlier.",
-      );
+      const status = state.includeOutlier
+        ? "The chart includes the identified outlier. Clear Show outlier to remove it."
+        : "The chart does not include the identified outlier.";
+      setText("overview-note", data.outlier.note ? `${status} ${data.outlier.note}` : status);
     }
     renderDeltaChart(pairs);
   }
