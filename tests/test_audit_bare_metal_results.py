@@ -10,6 +10,7 @@ from scripts.audit_bare_metal_results import (
     AuditConfig,
     AuditError,
     audit_dataset,
+    audit_sensitivity,
     verify_checksum,
 )
 
@@ -21,6 +22,7 @@ def write_run(
     release_mode: str,
     lpush: list[float],
     lrange: list[float],
+    release_rate_bps: int = 16_777_216,
 ) -> None:
     run = redis_dir / f"{timestamp}-{allocator}-paper-release-{release_mode}"
     run.mkdir(parents=True)
@@ -49,7 +51,7 @@ def write_run(
     if release_mode == "on":
         release_line = (
             "temeraire-wrapper: background release enabled "
-            "rate_bps=16777216\n"
+            f"rate_bps={release_rate_bps}\n"
         )
     (run / "redis-server.log").write_text(
         release_line + "Redis is now ready to exit\n", encoding="utf-8"
@@ -101,6 +103,49 @@ def create_dataset(root: Path) -> Path:
     write_run(redis, "20260101T000200Z", "legacy", "on", [80, 80], [120, 120])
     write_run(redis, "20260101T000300Z", "temeraire", "on", [88, 88], [132, 132])
     return raw
+
+
+SENSITIVITY_RATE_BPS = 67_108_864
+
+
+def add_sensitivity_pair(raw: Path, timestamp: str, order: str, temeraire_scale: float) -> None:
+    """Append one release-on pair at SENSITIVITY_RATE_BPS to an existing dataset."""
+    manifest_dir = raw / "paper-closer" / timestamp
+    manifest_dir.mkdir(parents=True)
+    (manifest_dir / "manifest.txt").write_text(
+        "trials=2\n"
+        "requests_per_trial=1000\n"
+        "snapshot_every_trials=1\n"
+        "run_release_off=0\n"
+        "run_release_on=1\n"
+        f"allocator_order={order}\n"
+        "balanced_run_number=none\n"
+        f"release_on_allocator_order={order}\n"
+        f"background_release_rate_bps_override={SENSITIVITY_RATE_BPS}\n"
+        "execution_environment=native\n"
+        "virtualization=none\n",
+        encoding="utf-8",
+    )
+    system = raw / "system-info"
+    (system / f"{timestamp}.txt").write_text(
+        (system / "20260101T000000Z.txt").read_text(encoding="utf-8"),
+        encoding="utf-8",
+    )
+    redis = raw / "redis"
+    legacy_stamp = timestamp
+    temeraire_stamp = timestamp[:-2] + "50Z"
+    if order == "temeraire-first":
+        legacy_stamp, temeraire_stamp = temeraire_stamp, legacy_stamp
+    write_run(
+        redis, legacy_stamp, "legacy", "on", [80, 80], [120, 120],
+        release_rate_bps=SENSITIVITY_RATE_BPS,
+    )
+    write_run(
+        redis, temeraire_stamp, "temeraire", "on",
+        [80 * temeraire_scale, 80 * temeraire_scale],
+        [120 * temeraire_scale, 120 * temeraire_scale],
+        release_rate_bps=SENSITIVITY_RATE_BPS,
+    )
 
 
 class ChecksumTests(unittest.TestCase):
@@ -190,6 +235,67 @@ class DatasetAuditTests(unittest.TestCase):
 
             with self.assertRaisesRegex(AuditError, "actual allocator order mismatch"):
                 audit_dataset(config)
+
+
+class SensitivityAuditTests(unittest.TestCase):
+    def sensitivity_config(self, raw: Path, expected_pairs: int) -> AuditConfig:
+        return AuditConfig(
+            raw_dir=raw,
+            expected_trials=2,
+            expected_requests=1_000,
+            expected_pairs=expected_pairs,
+        )
+
+    def test_release_on_pairs_are_grouped_by_release_rate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            add_sensitivity_pair(raw, "20260102T000000Z", "legacy-first", 1.05)
+            add_sensitivity_pair(raw, "20260103T000000Z", "temeraire-first", 0.95)
+
+            report = audit_sensitivity(self.sensitivity_config(raw, 2))
+
+        self.assertEqual(len(report.rates), 1)
+        rate = report.rates[0]
+        self.assertEqual(rate.release_rate_bps, SENSITIVITY_RATE_BPS)
+        self.assertEqual(rate.release_rate_mib, 64)
+        self.assertEqual(report.total_blocks, 4)
+        self.assertAlmostEqual(rate.pairs[0].delta_percent, 5.0)
+        self.assertAlmostEqual(rate.pairs[1].delta_percent, -5.0)
+        self.assertEqual([pair.pair for pair in rate.pairs], [1, 2])
+        self.assertEqual(rate.effect.positive_pairs, 1)
+
+    def test_balanced_manifests_are_excluded_from_the_sensitivity_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            add_sensitivity_pair(raw, "20260102T000000Z", "legacy-first", 1.05)
+
+            report = audit_sensitivity(self.sensitivity_config(raw, 1))
+
+        runs = [block.run for rate in report.rates for pair in rate.pairs for block in pair.blocks]
+        self.assertEqual(len(runs), 2)
+        self.assertTrue(all(run.startswith("20260102T") for run in runs), runs)
+
+    def test_missing_pair_at_a_rate_stops_the_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            add_sensitivity_pair(raw, "20260102T000000Z", "legacy-first", 1.05)
+
+            with self.assertRaisesRegex(AuditError, "expected 4 pairs at"):
+                audit_sensitivity(self.sensitivity_config(raw, 4))
+
+    def test_wrong_release_rate_in_the_log_stops_the_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            add_sensitivity_pair(raw, "20260102T000000Z", "legacy-first", 1.05)
+            log = raw / "redis" / "20260102T000000Z-legacy-paper-release-on" / "redis-server.log"
+            log.write_text(
+                "temeraire-wrapper: background release enabled rate_bps=16777216\n"
+                "Redis is now ready to exit\n",
+                encoding="utf-8",
+            )
+
+            with self.assertRaisesRegex(AuditError, "missing release-rate confirmation"):
+                audit_sensitivity(self.sensitivity_config(raw, 1))
 
 
 if __name__ == "__main__":
