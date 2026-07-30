@@ -310,7 +310,12 @@
           <article class="claim claim-supported">
             <span>Supported</span>
             <h2>The test reproduced the method</h2>
-            <p>The local test produced small effects that are similar to the effects in the Redis case study. This result occurred most often when background release was off.</p>
+            <p>The local test measures the same workload with the same allocator split, and its effects are as small as the effects in the Redis case study. On the bare-metal node, the small positive effect occurs with background release on at 16 MiB/s.</p>
+          </article>
+          <article class="claim claim-limited">
+            <span>Not supported</span>
+            <h2>One release setting is not a stable result</h2>
+            <p>Release-off gives a negative median on the bare-metal node. The rates of 64 MiB/s and 256 MiB/s give negative medians. The paper does not state its release rate, so 16 MiB/s is a local parameter.</p>
           </article>
           <article class="claim claim-limited">
             <span>Not supported</span>

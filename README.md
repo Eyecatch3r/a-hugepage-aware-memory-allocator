@@ -16,13 +16,20 @@ This artifact compares historical public TCMalloc with the legacy pageheap again
 │   ├── Dockerfile
 │   └── tcmalloc_bazel_wrapper/
 ├── notes/
-│   └── redis-temeraire-reproduction-protocol.tex
+│   ├── redis-temeraire-reproduction-protocol.tex
+│   ├── temeraire-main-presentation.tex
+│   └── temeraire-seminar-report.tex
 ├── plots/
 │   └── generated/
 ├── results/
+│   ├── node85-import/                  # bare-metal main run, 4 balanced pairs
+│   ├── node85-sensitivity-audit/       # bare-metal main run plus 2 extra rates
 │   ├── processed/
-│   └── raw/
+│   └── raw/                            # Docker/WSL runs
 ├── scripts/
+│   ├── aggregate_paper_closer_results.py
+│   ├── audit_bare_metal_results.py
+│   ├── build_results_site.py
 │   ├── check_allocator_preload.sh
 │   ├── collect_system_info.sh
 │   ├── collect_bare_metal_system_info.sh
@@ -31,18 +38,81 @@ This artifact compares historical public TCMalloc with the legacy pageheap again
 │   ├── run_paper_closer_redis_experiment.sh
 │   ├── run_bare_metal_redis_experiment.sh
 │   ├── run_bare_metal_release_on_sensitivity.sh
+│   ├── run_release_on_sensitivity.sh
 │   ├── setup_env.sh
 │   └── setup_bare_metal_env.sh
+├── site/                               # static results explorer
+├── tests/
 ├── docker-compose.yml
 └── README.md
 ```
 
-Third-party sources and build outputs are placed under `third_party/` after setup. Raw benchmark output is written to `results/raw/`.
+The setup script writes third-party sources and build outputs to
+`third_party/`. The benchmark scripts write raw output to `results/raw/`.
 
 The unsuffixed setup, metadata, and paper-close scripts belong to the original
-Docker/WSL workflow. Files containing `bare_metal` are the Debian scripts used
-for the node85 run. They are separate so that the cluster adaptations do not
-silently change the earlier workflow.
+Docker/WSL workflow. Files that contain `bare_metal` are the Debian scripts for
+the node85 run. They are separate, because the cluster changes must not change
+the earlier workflow.
+
+The Python scripts need Python 3.10 or later. They use only the standard library.
+The `tests/` directory holds the unit tests. Run them with:
+
+```bash
+python3 -m unittest discover -s tests -p "test_*.py"
+```
+
+### Result data and archives
+
+Git holds the manifests, summaries, Redis logs, memory samples, and system
+metadata for each run. Git does not hold the per-trial CSV files, because the
+node85 runs write more than 190,000 of them. Get the per-trial files from the
+result archives:
+
+| Archive | Contents |
+|---|---|
+| `temeraire-node85-results.tar.gz` | Main run: 4 balanced pairs at 16 MiB/s |
+| `temeraire-node85-results-with-sensitivity.tar.gz` | Main run plus 4 pairs at 64 MiB/s and 4 pairs at 256 MiB/s |
+
+Both archives are large. Publish them with a release. Do not add them to Git.
+Each `.sha256` file records the path on the node where the archive was made. Do
+not call `sha256sum -c` on these files. Use `audit_bare_metal_results.py`
+instead. It reads the hash value and ignores the recorded path.
+
+Two early two-trial smoke runs in the sensitivity archive have a broken
+`summary.csv` in each of their eight blocks. The German numeric locale wrote
+decimal commas into those files before `run_bare_metal_redis_experiment.sh` set
+`LC_ALL=C`. The two runs have the manifest timestamps `20260716T152333Z` and
+`20260716T154227Z`. The audit script rejects any block that does not have 2000
+trials, so these blocks stay out of all results.
+
+## Interactive Results Explorer
+
+The static site in `site/` shows the historical matched runs, trial
+distributions, process-memory snapshots, and background-release-rate
+sensitivity results. Use the Test environment control to select the native
+node85 results or the WSL/Docker results. The site has no runtime dependencies
+or network requests.
+
+Open `site/index.html` directly, or serve it locally:
+
+```bash
+python3 -m http.server 8000 --directory site
+```
+
+Then visit `http://localhost:8000/`.
+
+Rebuild the checked-in data bundle after you add or change raw results:
+
+```bash
+python3 scripts/build_results_site.py
+```
+
+The site calculates headline throughput with the same harmonic-mean rule as
+`aggregate_paper_closer_results.py`. Each distribution summary uses 128 evenly
+spaced trial observations per run. This keeps the site build from opening all
+400,000 per-operation files. Summary means, pairwise deltas, and memory series
+come from the complete run summaries and snapshots.
 
 ## Docker/WSL Prerequisites
 
@@ -91,11 +161,20 @@ Any deviation from these defaults must be recorded in the report.
 
 ## Usage
 
+Two workflows exist. Select the correct one before you start:
+
+- Use the **Bare-Metal Debian Path** to repeat the measurements in the report.
+  The report uses only the native node85 results.
+- Use the **Docker/WSL Reproduction Path** to build and diagnose the experiment
+  on a workstation. This workflow found the build, preload, THP, and
+  release-rate faults. Its own measurements show host drift that is larger than
+  the effect under test. Do not use its numbers as final evidence.
+
 ### Docker/WSL Reproduction Path
 
-This is the primary workflow for the seminar reproduction. It is the closest
-supported path in this repository to the Redis case study described in the
-paper, and it should be the default command sequence for the main reproduction.
+This workflow is the development and diagnostic stage. It has the paper-shaped
+Redis workload and the full metadata records, but it runs in a container above a
+shared kernel.
 
 ```bash
 docker compose build
@@ -105,40 +184,45 @@ docker compose run --rm temeraire-dev bash -lc "echo always > /sys/kernel/mm/tra
 docker compose run --rm temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh --allocator-order balanced"
 ```
 
-Balanced order alternates between legacy-first and Temeraire-first across
-paper-close runs that use it. The selected run number and effective per-release
-mode order are written to the paper-close manifest with the rest of the run
-metadata. If an interrupted balanced run should not affect the next order, pass
-`--balanced-run-number N` to select the desired odd or even balanced run number.
+Balanced order alternates between legacy-first and Temeraire-first across the
+paper-close runs that use it. The script writes the selected run number and the
+effective order for each release mode into the paper-close manifest, with the
+other run metadata. To keep an interrupted balanced run from changing the order
+of the next run, pass `--balanced-run-number N`. Odd numbers are legacy-first.
+Even numbers are Temeraire-first.
 
-Why this is the central path:
+This workflow gives more than the older direct benchmark flow:
 
-- it uses the paper-shaped Redis benchmark defaults
-- it records richer system metadata than the older direct benchmark flow
-- it can run both release-off and release-on configurations
-- it now captures THP state and periodic `smaps_rollup` snapshots during the long run
+- It uses the paper-shaped Redis benchmark defaults.
+- It records more system metadata.
+- It can run both release modes.
+- It captures the THP state and periodic `smaps_rollup` snapshots during the
+  long run.
 
 The preload check must show `libtcmalloc_legacy.so` for `legacy` and
 `libtcmalloc_temeraire.so` for `temeraire` in `/proc/<pid>/maps`.
 
 Important caveats:
 
-- THP comes from the shared Linux kernel used by Docker/WSL2, not from the image.
-- The `echo always > /sys/...` step changes kernel policy for the Docker/WSL Linux environment, not just one container.
-- If you skip that step, the run may remain in `madvise` mode and may fail to exercise the hugepage mechanism the paper studies.
+- THP comes from the shared Linux kernel of Docker/WSL2. It does not come from
+  the image.
+- The `echo always > /sys/...` step changes the kernel policy for the whole
+  Docker/WSL Linux environment. It does not change one container only.
+- If you skip that step, the run can stay in `madvise` mode. Redis then gets no
+  hugepage backing, and the run measures a different thing than the paper.
 
 Useful overrides:
 
-- `RUN_RELEASE_OFF=1` and `RUN_RELEASE_ON=1` control whether to run the two release modes.
-- `--allocator-order legacy-first|temeraire-first|balanced` controls which allocator is measured first within each release-mode pair. `PAPER_ALLOCATOR_ORDER` can set the same value through the environment.
-- `--balanced-run-number N` overrides the balanced run number: odd numbers are legacy-first and even numbers are Temeraire-first. `PAPER_BALANCED_RUN_NUMBER` can set the same value through the environment.
-- `PAPER_NUMA_NODE=0` pins Redis and `redis-benchmark` to one NUMA node when supported.
-- `RUN_PERF=1` adds `perf stat` captures for each allocator mode.
-- `PAPER_BACKGROUND_RELEASE_RATE_BPS=<bytes_per_sec>` overrides the allocator background release rate for the release-on runs.
-- `BUILD_EXACT_LLVM=1` builds a pinned LLVM/Clang toolchain from source. `LLVM_REF` and `LLVM_REPO_URL` can be overridden if the paper-era commit needs adjustment.
+- `RUN_RELEASE_OFF=1` and `RUN_RELEASE_ON=1` select the release modes to run.
+- `--allocator-order legacy-first|temeraire-first|balanced` sets which allocator runs first in each release-mode pair. `PAPER_ALLOCATOR_ORDER` sets the same value through the environment.
+- `--balanced-run-number N` sets the balanced run number. Odd numbers are legacy-first. Even numbers are Temeraire-first. `PAPER_BALANCED_RUN_NUMBER` sets the same value through the environment.
+- `PAPER_NUMA_NODE=0` pins Redis and `redis-benchmark` to one NUMA node, if the node gives support.
+- `RUN_PERF=1` adds a `perf stat` capture for each allocator mode.
+- `PAPER_BACKGROUND_RELEASE_RATE_BPS=<bytes_per_sec>` sets the allocator background release rate for the release-on runs.
+- `BUILD_EXACT_LLVM=1` builds the pinned LLVM/Clang toolchain from source. Change `LLVM_REF` and `LLVM_REPO_URL` if the paper-era commit needs a different source.
 
-For a targeted release-on-only diagnostic rerun, for example after an anomalous
-release-on result:
+To run a release-on diagnostic again, for example after an unexpected release-on
+result:
 
 ```bash
 docker compose run --rm -e RUN_RELEASE_OFF=0 -e RUN_RELEASE_ON=1 temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh --allocator-order temeraire-first"
@@ -146,21 +230,23 @@ docker compose run --rm -e RUN_RELEASE_OFF=0 -e RUN_RELEASE_ON=1 temeraire-dev b
 
 ### Bare-Metal Debian Path
 
-The second workflow runs directly on Debian 13. It was added for the node85
-rerun after the Docker/WSL release-on measurements showed host drift. Use a
-directory on the node's local filesystem, such as `/var/tmp`, rather than the
-shared home directory. Bazel's output tree contains many small files and was
-markedly slower on the shared filesystem.
+This workflow runs directly on Debian 13. It produces the measurements in the
+report. It was added for the node85 run, after the Docker/WSL release-on
+measurements showed host drift.
 
-`run_bare_metal_redis_experiment.sh` sets `LC_ALL=C`. Without that setting,
-node85's German numeric locale writes decimal commas into `summary.csv`, which
-breaks its three-column CSV layout.
+Use a directory on the local filesystem of the node, such as `/var/tmp`. Do not
+use the shared home directory. The Bazel output tree has many small files, and
+the shared filesystem is much slower for them.
 
-The compute node could not fetch the pinned repositories from GitHub. The
-source archives, Bazel 4.2.2, and Bazel dependency archives were therefore
-downloaded elsewhere and copied to the node. Each staged source directory has a
-`.temeraire-source-ref` file. `setup_bare_metal_env.sh` checks that marker before
-building when `TEMERAIRE_OFFLINE_SOURCES=1`.
+`run_bare_metal_redis_experiment.sh` sets `LC_ALL=C`. Without that setting, the
+German numeric locale on node85 writes decimal commas into `summary.csv` and
+breaks its three-column layout.
+
+The compute node cannot fetch the pinned repositories from GitHub. Download the
+source archives, Bazel 4.2.2, and the Bazel dependency archives on a different
+machine, then copy them to the node. Each staged source directory must have a
+`.temeraire-source-ref` file. If you set `TEMERAIRE_OFFLINE_SOURCES=1`,
+`setup_bare_metal_env.sh` checks that file before it builds.
 
 Run the setup from the local work directory:
 
@@ -300,37 +386,86 @@ Expected deviations include host CPU, kernel version, Transparent Huge Page (THP
 
 ## Current Result Interpretation
 
-The current result set should be read as a local reproduction attempt, not as an
-exact reproduction of the Redis rows in Table 1 of the paper.
+Read this result set as a local reproduction attempt. It is not an exact
+reproduction of the Redis rows in Table 1 of the paper.
 
-Regenerate the table below from the checked-in raw summaries with:
+The paper gives two Redis values: `+0.75%` with periodic release off, and
+`+0.44%` with periodic release on.
+
+### Reported result: the bare-metal node85 run
+
+The report uses these results only. Each value is one matched pair of a legacy
+block and a Temeraire block, at 2000 trials for each block. A positive value
+means that Temeraire was faster.
+
+| Condition | Pairs | Mean | Median | 95% interval | Paper |
+|---|---:|---:|---:|---:|---:|
+| Release off | 4 | -0.28% | -0.34% | [-1.04%, +0.48%] | +0.75% |
+| Release on, 16 MiB/s | 4 | +0.51% | +0.55% | [-0.69%, +1.73%] | +0.44% |
+| Release on, 64 MiB/s | 4 | -0.49% | -0.60% | [-0.92%, -0.07%] | not stated |
+| Release on, 256 MiB/s | 4 | -0.29% | -0.08% | [-1.54%, +0.96%] | not stated |
+
+Read these four rows together:
+
+- Release-off does not reproduce the paper. Its 95% interval excludes `+0.75%`.
+- Release-on at 16 MiB/s is close to the paper. Its interval also covers zero.
+  This is agreement in one configuration. It is not a confirmed effect.
+- The paper does not state a release rate. The 16 MiB/s value is a local
+  parameter. Do not read it as the value that the paper used.
+- At 64 MiB/s all four pairs favor legacy TCMalloc, and the interval excludes
+  zero. This is the only condition that separates from the baseline. At this
+  rate, Temeraire is slower than legacy TCMalloc.
+
+The defensible claim is narrow. The public reconstruction reaches the small
+positive Redis effect of the paper in one recorded release configuration. It does
+not reach it across release modes and rates.
+
+### Historical result: the Docker/WSL runs
+
+These results are superseded. Keep them as the record of the development stage.
+Do not compare them with the paper. Regenerate the table with:
 
 ```bash
-python3 scripts/aggregate_paper_closer_results.py
+python3 scripts/aggregate_paper_closer_results.py --dataset historical
 ```
 
-The script combines LPUSH and LRANGE means with the harmonic mean
-`2 / (1 / LPUSH + 1 / LRANGE)`, then reports the Temeraire-over-legacy
-percentage delta for each matched run pair.
-
-| Run family | Release off | Release on | Interpretation |
+| Run family | Release off | Release on | Note |
 |---|---:|---:|---|
-| THP fixed-order | +1.88% | +0.26% | first valid THP-enabled run |
+| THP fixed-order | +1.88% | +0.26% | first run with THP set to `always` |
 | Balanced 1 | +0.43% | +0.12% | legacy first |
 | Balanced 2 | +0.48% | +0.38% | Temeraire first |
 | Balanced 3 | -0.76% | -2.34% | negative run |
-| Balanced 4 | +3.46% | -12.02% | release-on outlier |
-| Targeted release-on | n/a | +0.12% | rerun of the anomaly |
+| Balanced 4 | +3.46% | -12.02% | see the two warnings below |
+| Targeted release-on | n/a | +0.12% | run of balanced 4 again |
 
-The strongest local signal is release-off: it is positive in most THP-enabled
-runs and its median is close to the paper's small Redis improvement. Release-on
-is smaller and noisier. The severe `-12.02%` release-on result did not reproduce
-in the targeted rerun, so it should be treated as a transient outlier unless it
-appears again.
+Two faults limit this table:
 
-The defensible claim is that the artifact reproduces the Redis methodology and
-often lands in the paper's small-effect regime under active THP. It does not
-robustly reproduce the exact Redis Table 1 statistics.
+1. **The release-on column does not measure periodic release.** The runner
+   started the TCMalloc background-actions thread but did not set the background
+   release rate. The pinned TCMalloc revision sets that rate to zero. The thread
+   continued its per-CPU-cache work and calculated zero bytes for each pageheap
+   release call. No run in this column performed periodic pageheap release. The
+   `-12.02%` value is part of this group.
+2. **Host drift is larger than the effect.** Absolute throughput moved by more
+   than 200 kRPS across one series and then recovered. Each allocator block ran
+   for approximately one hour. The speed of the host during that hour therefore
+   sets the result of the block.
+
+The corrected Docker/WSL release-on sweep sets a positive rate and confirms it in
+the Redis log. Its results still show the drift. Regenerate that matrix with:
+
+```bash
+python3 scripts/aggregate_paper_closer_results.py --dataset sensitivity
+```
+
+| Rate | Pair 1 | Pair 2 | Pair 3 | Pair 4 | Median |
+|---|---:|---:|---:|---:|---:|
+| 16 MiB/s | +1.91% | -0.16% | -0.27% | -1.37% | -0.21% |
+| 64 MiB/s | -6.88% | +2.10% | +11.49% | +12.21% | +6.80% |
+| 256 MiB/s | +15.73% | -0.09% | +0.50% | -0.77% | +0.20% |
+
+Compare the 16 MiB/s row with the node85 row above. The same rate gives `-0.21%`
+here and `+0.55%` on the native node. The environment sets the sign.
 
 ## Reproducibility Checklist
 
@@ -352,3 +487,77 @@ The following must be included to accurately reproduce the artifact:
 - **Allocator verification.** Redis may report `mem_allocator: libc` regardless of `LD_PRELOAD` because it was built with `MALLOC=libc`. Use `check_allocator_preload.sh` to confirm the active shared object via `/proc/<pid>/maps`.
 - **THP settings.** Transparent Huge Page configuration comes from the host kernel or Docker VM, not from the image. Always record `enabled` and `defrag` values.
 - **Hardware non-equivalence.** Docker improves setup reproducibility but does not produce hardware-identical conditions to the paper environment.
+
+## Bare-Metal Result Audit
+
+`audit_bare_metal_results.py` re-derives every reported bare-metal value from the
+raw trial files. It needs no third-party Python packages. It has two modes.
+
+Every value in the result table above comes from these two commands. Run both to
+reproduce the table.
+
+### Balanced mode: release off and release on at 16 MiB/s
+
+```bash
+python3 scripts/audit_bare_metal_results.py \
+  --mode balanced \
+  --raw-dir results/node85-import/raw \
+  --archive temeraire-node85-results.tar.gz \
+  --checksum temeraire-node85-results.tar.gz.sha256 \
+  --output-dir results/processed/node85-audit
+```
+
+The script finds the four balanced 2000-trial manifests. Each manifest owns four
+allocator blocks: legacy and Temeraire, with release off and release on.
+
+### Sensitivity mode: release on at each higher rate
+
+```bash
+python3 scripts/audit_bare_metal_results.py \
+  --mode sensitivity \
+  --raw-dir results/node85-sensitivity-audit/raw \
+  --archive temeraire-node85-results-with-sensitivity.tar.gz \
+  --checksum temeraire-node85-results-with-sensitivity.tar.gz.sha256 \
+  --output-dir results/processed/node85-sensitivity-audit
+```
+
+The script finds each 2000-trial manifest that requests release-on only and sets
+a positive release rate. Each manifest owns two allocator blocks. The script
+groups the pairs by rate and reports one summary for each rate. It reads the rate
+from the manifest, so it audits 64 MiB/s and 256 MiB/s together. It skips the
+balanced manifests, because those request both release modes.
+
+### What the script checks
+
+In both modes the script verifies the archive checksum, then checks these items
+for each block:
+
+- Trial identifiers, request counts, and per-trial throughput values
+- The count of raw per-trial CSV files
+- The count of memory samples against the snapshot interval
+- The block mean, recomputed from the raw trial files
+- The THP state before the run
+- The release-rate confirmation line in the Redis log
+- A clean-shutdown marker in the Redis log
+- The allocator order against the order in the manifest
+- The system metadata: Redis version, TCMalloc commit, LLVM commit, execution
+  environment, and virtualization
+
+The `--expected-trials 2000` default rejects the smoke tests and the 10-trial
+pilots. Any missing or inconsistent item stops the script with a non-zero exit
+code.
+
+The throughput of each block is `2 / (1 / LPUSH + 1 / LRANGE)`. The script
+calculates the percentage change of Temeraire against the matched legacy block.
+It treats each complete run pair as one replication. It does not treat the 2000
+sequential trials in a block as 2000 replications, because they are
+autocorrelated.
+
+### Output files
+
+| File | Contents |
+|---|---|
+| `audit.json` | All checks, block metrics, and warnings, in machine-readable form |
+| `pair-summary.csv` | Balanced mode: one row per balanced run, plus mean and median |
+| `rate-summary.csv` | Sensitivity mode: one row per pair, plus mean and median for each rate |
+| `audit.md` | Short report for a human reader |

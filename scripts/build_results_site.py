@@ -9,7 +9,7 @@ import json
 import math
 import re
 import statistics
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable
 
@@ -374,7 +374,7 @@ def methodology(scope: str) -> dict[str, object]:
 def build_results_data() -> dict[str, object]:
     return {
         "schemaVersion": 2,
-        "generatedAt": datetime.now(UTC).replace(microsecond=0).isoformat(),
+        "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
         "defaultEnvironment": "baremetal",
         "environments": {
             "baremetal": {
@@ -401,6 +401,12 @@ def build_results_data() -> dict[str, object]:
                 "outlier": {
                     "id": "balanced-4-on",
                     "label": "balanced 4, release on",
+                    "note": (
+                        "Every release-on run in this environment ran with a zero "
+                        "background release rate, so no run in that mode performed "
+                        "periodic pageheap release. The -12.02% value is the largest "
+                        "of that group."
+                    ),
                 },
                 "historical": build_wsl_historical_pairs(),
                 "releaseSensitivity": build_sensitivity_records(

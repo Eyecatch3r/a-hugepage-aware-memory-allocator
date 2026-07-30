@@ -174,11 +174,13 @@ built LLVM 13.0.0 toolchain from commit
 repository now supports not only the paper-shaped workload but also a
 paper-closer compiler path that has been exercised successfully end to end.
 
-One minor inconsistency remains worth recording: the paper-closer manifest still
-marks \texttt{exact\_llvm\_commit\_cd442157cf=no}, even though the associated
-system-information file confirms that the exact LLVM path was used in that run.
-The methodology should therefore trust the collected compiler metadata over the
-older manifest flag.
+One inconsistency appeared in the Docker/WSL manifests. They set the
+\texttt{exact\_llvm\_}\allowbreak\texttt{commit\_cd442157cf} flag to
+\texttt{no}, even though the associated system-information files confirm that the
+exact LLVM path was used in those runs. For those runs, trust the collected
+compiler metadata over the manifest flag. The later bare-metal manifests set the
+same flag to \texttt{yes}, so flag and metadata agree from the node85 stage
+onward.
 
 \section{Benchmark Script Changes}
 
@@ -616,11 +618,19 @@ targeted release-on & n/a & \texttt{+0.12\%} & rerun of anomaly \\
 \end{tabular}
 \end{center}
 
-The intended final interpretation should therefore be cautious: release-off has
-a recurring positive signal in the paper's direction, while release-on is small
-and noisy. The artifact reproduces the Redis methodology and often lands in the
-paper's small-effect regime, but it does not robustly reproduce the exact Redis
-Table~1 statistics.
+The interpretation available at this point was cautious: release-off had a
+recurring positive signal in the paper's direction, while release-on was small
+and noisy.
+
+\medskip
+\noindent\fbox{\parbox{0.95\linewidth}{\textbf{Superseded.} Two later findings
+retract the reading above. The audit in
+Section~\ref{sec:post-audit} shows that every \texttt{release-on} value in this
+table ran at a zero background release rate, so that whole column measures
+something other than periodic release. The bare-metal run in
+Section~\ref{sec:bare-metal} then reverses the release-off conclusion: its median
+is $-0.34\%$, not positive. Read this table as a record of the development stage
+only.}}
 
 \section{Remaining Limitations}
 
@@ -673,6 +683,7 @@ For smoke testing, the environment variables for trial count and request count c
 For seminar measurements, the defaults should remain documented and any deviations should be recorded.
 
 \section{Post-Audit Release-On Finding}
+\label{sec:post-audit}
 
 A final audit identified a configuration error in every run labelled
 \texttt{release-on}. The orchestration enabled TCMalloc's background-actions
@@ -771,5 +782,138 @@ single-host Docker/WSL2 drift is larger than the sub-one-percent effect being
 measured. Future work should interleave shorter allocator blocks or run both
 conditions on isolated, controlled hosts instead of comparing consecutive
 hour-long runs.
+
+\section{Bare-Metal Rerun on node85}
+\label{sec:bare-metal}
+
+The Docker/WSL2 drift was the reason for a second workflow rather than another
+container run. The native scripts keep the same pinned source revisions,
+allocator wrappers, Redis workload, result layout, and pair structure, and run
+directly on a dedicated Debian~13 node.
+
+\subsection{Recorded environment}
+
+\begin{center}
+\begin{tabular}{@{}ll@{}}
+\toprule
+Field & Recorded value \\
+\midrule
+OS & Debian GNU/Linux 13 (trixie) \\
+Kernel & \texttt{6.12.95+deb13-amd64} \\
+Processor & Intel Xeon Gold 5318N \\
+Topology & 24 cores, 48 threads, one NUMA node \\
+Memory & 188~GiB \\
+Virtualization & none detected \\
+THP & \texttt{always}; defrag \texttt{madvise} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\subsection{New practical problems}
+
+The move to the cluster produced a fresh set of obstacles, none of them related
+to the allocator:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item The shared home directory was too slow for Bazel's many small files, so
+  the build and the runs were moved to \texttt{/var/tmp}.
+  \item The compute node could not fetch the pinned sources, so the source and
+  dependency archives had to be staged for an offline build. Each staged
+  directory carries a \texttt{.temeraire-source-ref} marker that
+  \texttt{setup\_bare\_metal\_env.sh} checks.
+  \item The paper-era LLVM revision needed \texttt{-include cstdint} to build
+  with Debian~13's host compiler.
+  \item The German numeric locale wrote decimal commas into \texttt{summary.csv}
+  and broke its three-column layout. The native runner now sets
+  \texttt{LC\_ALL=C}. Two early two-trial smoke blocks predate that fix and
+  still contain the broken files; the audit script excludes them because they
+  do not have 2000 trials.
+\end{itemize}
+
+\subsection{Runs completed}
+
+Three two-trial smoke runs and two ten-trial pilots came first. Four full
+balanced pairs then ran at 16~MiB/s, each pair covering legacy and Temeraire
+with release off and release on. A second series kept release enabled and added
+four order-alternated pairs at 64~MiB/s and four at 256~MiB/s. Every full
+allocator block holds 2000 trials, and every release-on Redis log confirms the
+requested rate before the benchmark proceeds.
+
+\subsection{Results}
+
+\begin{center}
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Condition & Mean & Median & 95\% interval \\
+\midrule
+Release off            & $-0.28\%$ & $-0.34\%$ & $[-1.04\%,+0.48\%]$ \\
+Release on, 16 MiB/s   & $+0.51\%$ & $+0.55\%$ & $[-0.69\%,+1.73\%]$ \\
+Release on, 64 MiB/s   & $-0.49\%$ & $-0.60\%$ & $[-0.92\%,-0.07\%]$ \\
+Release on, 256 MiB/s  & $-0.29\%$ & $-0.08\%$ & $[-1.54\%,+0.96\%]$ \\
+\midrule
+Paper, release off     & $+0.75\%$ & & \\
+Paper, release on      & $+0.44\%$ & & \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Each interval treats a complete run pair as the replication unit. It does not
+treat the 2000 sequential trials inside a block as independent replications.
+
+Three points follow. First, the node removes the double-digit swings: all
+sixteen blocks of the main run landed between 989 and 1003~kRPS combined, a
+total spread of about $1.4\%$, against the 200~kRPS movement seen under WSL2.
+Second, the release-off conclusion from the Docker/WSL2 stage does not survive.
+Its native interval excludes the paper's $+0.75\%$, so the aggregate is
+inconsistent with the paper's release-off row rather than merely quieter than it.
+Third, the release-on agreement at 16~MiB/s holds at one rate only. The
+64~MiB/s interval excludes zero in the losing direction, which makes that rate
+the only condition in the study where Temeraire separates from the baseline at
+all.
+
+\subsection{Audit}
+
+The audit script re-derives both halves of the archive from the raw trial files.
+It lives at \texttt{scripts/} and uses only the Python standard library. Run it
+in two modes:
+
+\begin{lstlisting}[style=codestyle]
+python3 scripts/audit_bare_metal_results.py --mode balanced \
+  --raw-dir results/node85-import/raw \
+  --archive temeraire-node85-results.tar.gz \
+  --checksum temeraire-node85-results.tar.gz.sha256 \
+  --output-dir results/processed/node85-audit
+
+python3 scripts/audit_bare_metal_results.py --mode sensitivity \
+  --raw-dir results/node85-sensitivity-audit/raw \
+  --archive temeraire-node85-results-with-sensitivity.tar.gz \
+  --checksum temeraire-node85-results-with-sensitivity.tar.gz.sha256 \
+  --output-dir results/processed/node85-sensitivity-audit
+\end{lstlisting}
+
+The script verifies the archive checksum, then checks trial identifiers, request
+counts, raw file counts, memory samples, recomputed block means, THP state,
+release-rate confirmations, clean shutdowns, allocator order, and system
+metadata. Any mismatch stops it with a non-zero exit code. Both commands pass on
+the current archives.
+
+\subsection{Limitations that remain}
+
+The bare-metal stage removes the container, the WSL2 kernel, and the competing
+desktop load. It does not remove the rest:
+
+\begin{itemize}[leftmargin=1.5em]
+  \item Four pairs per condition is a small sample for sub-one-percent effects.
+  \item Allocator blocks run consecutively, so slow changes in frequency,
+  temperature, or system activity can survive inside a pair.
+  \item The metadata omits CPU governor, turbo state, temperature, and per-block
+  allocator mappings. Preload was verified once before the run instead of inside
+  every result directory.
+  \item The paper does not state a background release rate for Redis, so every
+  release-on rate here is a local experimental parameter.
+  \item The Xeon Gold 5318N and the Debian~13 stack still differ from the
+  paper's environment, and the public TCMalloc revision remains a historical
+  approximation of Google's internal allocator.
+\end{itemize}
 
 \end{document}
