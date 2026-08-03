@@ -281,7 +281,45 @@ PAPER_BACKGROUND_RELEASE_RATE_BPS=16777216 \
 Remove the two reduced benchmark variables for the full 2000-trial run. The
 paper does not state a public background-release rate, so
 `PAPER_BACKGROUND_RELEASE_RATE_BPS` is a recorded local parameter rather than a
-paper-derived constant. A release-on sensitivity series can be run separately:
+paper-derived constant.
+
+#### Workload selection
+
+`PAPER_WORKLOAD` selects which reading of the paper's trial sentence to run. The
+runner records the value in the manifest and in `memory-before.txt` for each
+block.
+
+| Value | Trial structure |
+|---|---|
+| `sequential` (default) | One LPUSH run, then one LRANGE run. Two commands per request. All pushes run before all reads. |
+| `combined` | One run of an `EVAL` script that pushes five elements and reads those five back. One command per request. |
+
+Run both values to measure the effect of the choice. Neither value is correct on
+its own. The `sequential` value doubles the command count and separates the
+phases. The `combined` value adds Lua interpreter allocations to a measurement of
+allocation.
+
+```bash
+PAPER_WORKLOAD=combined \
+PAPER_NUMA_NODE=0 \
+PAPER_BACKGROUND_RELEASE_RATE_BPS=16777216 \
+./scripts/run_bare_metal_redis_experiment.sh --allocator-order balanced
+```
+
+#### CPU time
+
+Each block records the CPU time of the Redis server in the `## cpu` section of
+`memory-before.txt`, every memory sample, and `memory-after.txt`. Redis restarts
+for each block, so `used_cpu_user` plus `used_cpu_sys` in `memory-after.txt` is
+the CPU total for that block. The audit script divides the request count by that
+total to report throughput in the paper's unit of requests per second per core.
+
+The audit reports the normalized result only when every block in the comparison
+recorded CPU time. Blocks from earlier runs have no `## cpu` section, so the
+audit reports their unnormalized deltas and states that the normalized summary is
+not available.
+
+A release-on sensitivity series can be run separately:
 
 ```bash
 RELEASE_RATES_MIB="16 64 256" \

@@ -970,6 +970,62 @@ Ingens and HawkEye manage huge pages from the OS side and are complementary to
 allocator-side placement
 \cite{10.5555/3026877.3026931,10.1145/3297858.3304064}.
 
+\section{Planned Correction Run}
+\label{sec:planned-rerun}
+
+Two of the three gaps described above can be closed by changing the harness, and
+a third cannot. The results in Section~\ref{sec:results} predate that work. They
+are reported as they stand, and a corrected run is prepared rather than
+completed.
+
+The metric is the change worth making first. Recording CPU time costs almost
+nothing: Redis restarts for every allocator block, so \code{redis-cli info cpu}
+at the end of a block returns \code{used\_cpu\_user} and \code{used\_cpu\_sys}
+for exactly that block, and requests divided by CPU seconds gives the paper's
+unit. The reason to spend a day of node time on it is that normalization may not
+just restate the release-on result. It may move it. With release enabled,
+TCMalloc runs a background thread that issues \code{MADV_DONTNEED}, and that
+thread consumes CPU the release-off condition never spends. An unnormalized rate
+cannot tell the two cases apart, so the $+0.55\%$ reported at 16~MiB/s is
+consistent both with Temeraire serving more requests and with Temeraire serving
+the same requests less cheaply. The corrected run will separate them.
+
+The workload ambiguity is handled the way the unstated release rate already is,
+by measuring both readings instead of choosing one. The sequential form stays as
+it is. The literal form, where one request performs the push and the read
+together, can be driven through \code{redis-benchmark} with a short
+\code{EVAL} script. Neither form is clean: the sequential one doubles the command
+count and separates the phases, while the Lua path adds interpreter allocations
+to a measurement whose subject is allocation. Reporting both is more honest than
+defending either, and it turns an underspecified sentence into a recorded
+experimental dimension.
+
+The run will also spend its time differently. Between-pair variation dominates
+the uncertainty in Table~\ref{tab:bare-metal-pairs}: the standard deviation
+across the four release-off deltas is $0.48$ percentage points, and across the
+release-on deltas $0.76$, while the standard error of a single block mean at
+2000 trials is near $0.08$ even before autocorrelation is considered. The 2000
+trials therefore measure each block far more precisely than the four pairs
+measure the effect. Cutting to 500 trials raises the block standard error to
+roughly $0.16$ percentage points, still small against the between-pair spread,
+and frees enough time for sixteen pairs at the same total cost. That reduces the
+interval width by about a factor of three, which is the difference between an
+interval that covers zero and one that can resolve an effect of half a percent.
+Because 2000 trials is a property the paper does state, the corrected series will
+keep one condition at 2000 trials for fidelity and use the shorter blocks for the
+pairs that carry the inference. Reporting at 90\% rather than 95\% would also
+match the paper's stated intervals.
+
+At 68 minutes per allocator block, the release-off and 16~MiB/s conditions come
+to about eighteen hours of node time for four pairs, and the full matrix across
+both workload forms and all three rates to roughly three days.
+
+The hardware gap survives all of this. Matching the paper's Skylake Xeons needs a
+different machine, not a different script, so the corrected run will either move
+to a Skylake or Cascade Lake node if the cluster provides one, or state again
+that the processor generation is the one specified property this reproduction does
+not meet.
+
 \section{Conclusion}
 \label{sec:conclusion}
 

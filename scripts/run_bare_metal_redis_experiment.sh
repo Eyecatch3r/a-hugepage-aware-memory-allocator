@@ -18,6 +18,15 @@ PAPER_BALANCED_RUN_NUMBER="${PAPER_BALANCED_RUN_NUMBER:-}"
 PAPER_NUMA_NODE="${PAPER_NUMA_NODE:-}"
 PAPER_BACKGROUND_RELEASE_RATE_BPS="${PAPER_BACKGROUND_RELEASE_RATE_BPS:-}"
 PAPER_SNAPSHOT_EVERY_TRIALS="${PAPER_SNAPSHOT_EVERY_TRIALS:-250}"
+# The paper's trial is "1000000 requests to push 5 elements and read those 5
+# elements", which admits two readings. Set PAPER_WORKLOAD to choose one:
+#   sequential  LPUSH run then LRANGE run, two commands per request (historical)
+#   combined    one EVAL run that pushes and reads, one command per request
+PAPER_WORKLOAD="${PAPER_WORKLOAD:-sequential}"
+if [[ "${PAPER_WORKLOAD}" != "sequential" && "${PAPER_WORKLOAD}" != "combined" ]]; then
+  echo "PAPER_WORKLOAD must be 'sequential' or 'combined', got '${PAPER_WORKLOAD}'." >&2
+  exit 1
+fi
 
 REDIS_TRIALS="${REDIS_TRIALS:-2000}"
 REDIS_REQUESTS_PER_TRIAL="${REDIS_REQUESTS_PER_TRIAL:-1000000}"
@@ -156,6 +165,17 @@ SYSTEM_INFO_AFTER="$(find "${ROOT_DIR}/results/raw/system-info" -maxdepth 1 -typ
   echo "pipeline=${REDIS_PIPELINE}"
   echo "requested_numa_node=${PAPER_NUMA_NODE:-none}"
   echo "snapshot_every_trials=${PAPER_SNAPSHOT_EVERY_TRIALS}"
+  echo "workload=${PAPER_WORKLOAD}"
+  if [[ "${PAPER_WORKLOAD}" == "combined" ]]; then
+    echo "commands_per_request=1"
+    echo "workload_note=one EVAL request pushes five elements and reads those five back"
+  else
+    echo "commands_per_request=2"
+    echo "workload_note=one LPUSH run then one LRANGE run, all pushes before all reads"
+  fi
+  echo "cpu_time_recorded=yes"
+  echo "throughput_normalized_for_cpu=no"
+  echo "throughput_normalization_note=raw requests per second; the paper reports requests per second per core"
   echo
   echo "## release modes requested"
   echo "run_release_off=${RUN_RELEASE_OFF}"
@@ -202,6 +222,7 @@ run_mode() {
   export RUN_LABEL="${run_label}"
   export REDIS_NUMA_NODE="${PAPER_NUMA_NODE}"
   export REDIS_SNAPSHOT_EVERY_TRIALS="${PAPER_SNAPSHOT_EVERY_TRIALS}"
+  export REDIS_WORKLOAD="${PAPER_WORKLOAD}"
 
   case "${release_mode}" in
     release-off)
