@@ -377,6 +377,39 @@ class CpuNormalizationTests(unittest.TestCase):
         self.assertAlmostEqual(report.pairs[0].release_off_delta_percent, 5.0)
 
 
+class RetryReportingTests(unittest.TestCase):
+    def test_a_retried_block_raises_a_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            after = raw / "redis" / "20260101T000000Z-legacy-paper-release-off" / "memory-after.txt"
+            after.write_text(
+                after.read_text(encoding="utf-8") + "trial_retries=3\n", encoding="utf-8"
+            )
+            config = AuditConfig(
+                raw_dir=raw, expected_trials=2, expected_requests=1_000, expected_pairs=1,
+            )
+
+            report = audit_dataset(config)
+
+        blocks = {b.run: b.trial_retries for pair in report.pairs for b in pair.blocks}
+        self.assertEqual(blocks["20260101T000000Z-legacy-paper-release-off"], 3)
+        self.assertTrue(
+            any("failed and were repeated" in w for w in report.warnings),
+            report.warnings,
+        )
+
+    def test_a_clean_run_raises_no_retry_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            config = AuditConfig(
+                raw_dir=raw, expected_trials=2, expected_requests=1_000, expected_pairs=1,
+            )
+
+            report = audit_dataset(config)
+
+        self.assertFalse(any("failed and were repeated" in w for w in report.warnings))
+
+
 class SensitivityAuditTests(unittest.TestCase):
     def sensitivity_config(self, raw: Path, expected_pairs: int) -> AuditConfig:
         return AuditConfig(

@@ -93,6 +93,9 @@ class BlockResult:
     # None for blocks recorded before CPU capture existed.
     cpu_seconds: float | None = None
     requests_per_cpu_second: float | None = None
+    # Benchmark invocations that failed and were repeated. Surfaced as a warning
+    # so a retried block is never mistaken for a clean one.
+    trial_retries: int = 0
 
 
 @dataclass(frozen=True)
@@ -347,6 +350,7 @@ def audit_block(
     require("[always]" in thp_path.read_text(errors="replace"), f"THP was not set to always in {run}")
     memory_before = read_key_values(run / "memory-before.txt")
     require(memory_before.get("allocator") == allocator, f"allocator metadata mismatch in {run}")
+    retries = int(read_key_values(run / "memory-after.txt").get("trial_retries", "0"))
     if workload == "combined":
         combined_rps = summary["pushread5"]
         lpush_mean_rps = None
@@ -372,6 +376,7 @@ def audit_block(
         raw_trial_files=len(raw_files),
         memory_samples=len(samples),
         release_confirmations=confirmation_count,
+        trial_retries=retries,
     )
 
 
@@ -557,6 +562,10 @@ def audit_dataset(config: AuditConfig, archive_sha256: str | None = None) -> Aud
         warnings.append("CPU governor, frequency, turbo state, and temperature are not recorded.")
     if not all("libtcmalloc" in (config.raw_dir / "redis" / block.run / "memory-before.txt").read_text(errors="replace") for pair in pairs for block in pair.blocks):
         warnings.append("Per-block /proc allocator mappings are absent; preload was verified separately before the run.")
+    retried = [(block.run, block.trial_retries) for pair in pairs for block in pair.blocks if block.trial_retries]
+    if retried:
+        detail = ", ".join(f"{name}={count}" for name, count in retried)
+        warnings.append(f"Some benchmark invocations failed and were repeated: {detail}.")
     return AuditReport(
         raw_dir=str(config.raw_dir),
         total_blocks=sum(len(pair.blocks) for pair in pairs),
@@ -679,6 +688,10 @@ def audit_sensitivity(config: AuditConfig, archive_sha256: str | None = None) ->
         warnings.append("CPU governor, frequency, turbo state, and temperature are not recorded.")
     if not all("libtcmalloc" in (redis_root / block.run / "memory-before.txt").read_text(errors="replace") for pair in pairs for block in pair.blocks):
         warnings.append("Per-block /proc allocator mappings are absent; preload was verified separately before the run.")
+    retried = [(block.run, block.trial_retries) for pair in pairs for block in pair.blocks if block.trial_retries]
+    if retried:
+        detail = ", ".join(f"{name}={count}" for name, count in retried)
+        warnings.append(f"Some benchmark invocations failed and were repeated: {detail}.")
     warnings.append("The paper does not state a release rate. Each rate is a local experimental parameter.")
     return SensitivityReport(
         raw_dir=str(config.raw_dir),
