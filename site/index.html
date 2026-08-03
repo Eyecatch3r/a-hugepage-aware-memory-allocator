@@ -310,12 +310,17 @@
           <article class="claim claim-supported">
             <span>Supported</span>
             <h2>The test reproduced the method</h2>
-            <p>The local test measures the same workload with the same allocator split, and its effects are as small as the effects in the Redis case study. On the bare-metal node, the small positive effect occurs with background release on at 16 MiB/s.</p>
+            <p>The local test uses the same allocator split and a workload of the same shape, and its effects are as small as the effects in the Redis case study. On the bare-metal node, the small positive effect occurs with background release on at 16 MiB/s.</p>
           </article>
           <article class="claim claim-limited">
             <span>Not supported</span>
             <h2>One release setting is not a stable result</h2>
             <p>Release-off gives a negative median on the bare-metal node. The rates of 64 MiB/s and 256 MiB/s give negative medians. The paper does not state its release rate, so 16 MiB/s is a local parameter.</p>
+          </article>
+          <article class="claim claim-limited">
+            <span>Not supported</span>
+            <h2>The metric is not the same quantity</h2>
+            <p>This test reports raw requests per second. It applies no normalization for CPU time, and it joins two operation rates with a harmonic mean that the paper does not specify. A local percentage and a paper percentage can be close and still measure different things.</p>
           </article>
           <article class="claim claim-limited">
             <span>Not supported</span>

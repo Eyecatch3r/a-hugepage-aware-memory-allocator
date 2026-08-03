@@ -392,6 +392,22 @@ reproduction of the Redis rows in Table 1 of the paper.
 The paper gives two Redis values: `+0.75%` with periodic release off, and
 `+0.44%` with periodic release on.
 
+Two differences apply to every comparison with those two values. Keep them in
+mind before you read a matching percentage as a reproduction.
+
+1. **The metric is not the same quantity.** This artifact reports raw
+   `redis-benchmark` requests per second. It applies no normalization for the CPU
+   time that the work consumed, and it joins two operation rates with a harmonic
+   mean that the paper does not specify. A local percentage and a paper
+   percentage can be close together and still measure different things.
+2. **The workload is one reading of an underspecified sentence.** The paper
+   describes a trial of one million requests "to push 5 elements and read those 5
+   elements". Each local trial runs 1,000,000 LPUSH commands and then 1,000,000
+   LRANGE commands. That is two million commands. All pushes run before all
+   reads, so LRANGE reads the first five elements of a list of five million
+   elements. It does not read each group of five immediately after the push. An
+   interleaved reading of the same sentence gives a different access pattern.
+
 ### Reported result: the bare-metal node85 run
 
 The report uses these results only. Each value is one matched pair of a legacy
@@ -405,6 +421,11 @@ means that Temeraire was faster.
 | Release on, 64 MiB/s | 4 | -0.49% | -0.60% | [-0.92%, -0.07%] | not stated |
 | Release on, 256 MiB/s | 4 | -0.29% | -0.08% | [-1.54%, +0.96%] | not stated |
 
+The interval is a Student-t interval on the log-transformed pair ratios, with the
+four complete pairs as the replication unit. It belongs to the mean, not to the
+median beside it. For these four conditions the two centers differ by less than
+0.01 percentage points.
+
 Read these four rows together:
 
 - Release-off does not reproduce the paper. Its 95% interval excludes `+0.75%`.
@@ -413,12 +434,14 @@ Read these four rows together:
 - The paper does not state a release rate. The 16 MiB/s value is a local
   parameter. Do not read it as the value that the paper used.
 - At 64 MiB/s all four pairs favor legacy TCMalloc, and the interval excludes
-  zero. This is the only condition that separates from the baseline. At this
-  rate, Temeraire is slower than legacy TCMalloc.
+  zero. This is the only condition here whose unadjusted interval does so. Four
+  conditions were tested, and no correction for multiple comparisons was applied.
+  Record this result, but do not call it an established effect.
 
-The defensible claim is narrow. The public reconstruction reaches the small
-positive Redis effect of the paper in one recorded release configuration. It does
-not reach it across release modes and rates.
+The defensible claim is narrow. The public reconstruction lands in the small
+positive Redis range of the paper in one recorded release configuration. It does
+not land there across release modes and rates. The two differences listed above
+also apply, so this is proximity between two differently built numbers.
 
 ### Historical result: the Docker/WSL runs
 

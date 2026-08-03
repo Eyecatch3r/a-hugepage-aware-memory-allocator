@@ -436,7 +436,8 @@ In its current state, the repository now supports a more faithful small-scale ap
   \item Redis version aligned to \texttt{6.0.9},
   \item historical public TCMalloc source included,
   \item legacy and Temeraire allocator variants built as shared objects,
-  \item benchmark script aligned to the push-five/read-five workload shape,
+  \item benchmark script built to one reading of the push-five/read-five
+  workload shape,
   \item Docker defaults prepared for repeated trials,
   \item runtime verification added to ensure the chosen allocator is truly loaded,
   \item richer metadata collection for CPU, NUMA, THP, and compiler details,
@@ -857,8 +858,10 @@ Paper, release on      & $+0.44\%$ & & \\
 \end{tabular}
 \end{center}
 
-Each interval treats a complete run pair as the replication unit. It does not
-treat the 2000 sequential trials inside a block as independent replications.
+Each interval is a Student-t interval on the log-transformed pair ratios, with a
+complete run pair as the replication unit. It therefore belongs to the mean
+rather than to the median beside it, and it does not treat the 2000 sequential
+trials inside a block as independent replications.
 
 Three points follow. First, the node removes the double-digit swings: all
 sixteen blocks of the main run landed between 989 and 1003~kRPS combined, a
@@ -867,9 +870,19 @@ Second, the release-off conclusion from the Docker/WSL2 stage does not survive.
 Its native interval excludes the paper's $+0.75\%$, so the aggregate is
 inconsistent with the paper's release-off row rather than merely quieter than it.
 Third, the release-on agreement at 16~MiB/s holds at one rate only. The
-64~MiB/s interval excludes zero in the losing direction, which makes that rate
-the only condition in the study where Temeraire separates from the baseline at
-all.
+64~MiB/s interval is the only one here that excludes zero, and it does so on the
+legacy side; with four pairs, a normal approximation, and four conditions tested
+without correction, that is worth recording rather than treating as an
+established effect.
+
+Two comparability limits apply to the whole table. The local metric is raw
+\texttt{redis-benchmark} throughput with no normalization for CPU time, joined
+across two operations by a harmonic mean that the paper does not specify. And
+the paper's one-million-request trial ``to push 5 elements and read those 5
+elements'' admits more than one implementation; the sequential form used here
+issues one million pushes and then one million reads, two million commands in
+total, with every push preceding every read. A percentage that matches the paper
+is therefore proximity between differently built quantities.
 
 \subsection{Audit}
 

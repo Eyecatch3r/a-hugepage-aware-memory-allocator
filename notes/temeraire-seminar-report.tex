@@ -146,12 +146,13 @@ the effect in the paper. This prompted a second run on a dedicated bare-metal
 Debian node.
 
 The native run changes the result. With periodic release disabled, the median
-Temeraire delta is $-0.34\%$ and its 95\% interval excludes the paper's
-$+0.75\%$. With release enabled at the locally chosen rate of 16~MiB/s, the
-median is $+0.55\%$, close to the paper's $+0.44\%$. Further runs at 64 and
-256~MiB/s give medians of $-0.60\%$ and $-0.08\%$. The bare-metal measurements
-remove the extreme WSL2 swings and show that the small Redis result holds in one
-release configuration rather than across modes and rates.
+Temeraire delta is $-0.34\%$ and the mean is $-0.28\%$, with an approximate
+95\% interval of $[-1.04\%,+0.48\%]$ that excludes the paper's $+0.75\%$. With
+release enabled at the locally chosen rate of 16~MiB/s, the median is $+0.55\%$
+against the paper's $+0.44\%$. Further runs at 64 and 256~MiB/s give medians of
+$-0.60\%$ and $-0.08\%$. The bare-metal measurements remove the extreme WSL2
+swings and show that the small Redis result holds in one release configuration
+rather than across modes and rates.
 \end{abstract}
 
 \begin{CCSXML} <ccs2012> <concept>
@@ -420,9 +421,12 @@ avoids consuming long free runs unnecessarily and avoids disturbing nearly empty
 hugepages that might otherwise drain and be released.
 
 The Redis list workload in the paper performs small list-node and string-value
-allocations. Under Temeraire these requests pass through \HugeFillerLabel{} and
-are subject to its placement objective; the legacy pageheap places them without
-one. Section~\ref{sec:methodology} turns that difference into the measured
+allocations. These do not reach \HugeFillerLabel{} individually. As
+Figure~\ref{fig:tcmalloc} shows, the per-CPU and central caches serve them; only
+when those caches need fresh backing spans does a page-level request arrive at
+the pageheap. \HugeFillerLabel{} places those spans, and the legacy pageheap
+places them without a hugepage-aware objective.
+Section~\ref{sec:methodology} turns that difference into the measured
 hypothesis.
 
 Periodic memory release complicates the picture. When release is enabled,
@@ -521,14 +525,26 @@ instead of leaving the WSL2 measurements as the final result.
 
 The repository retains a short direct Redis path for smoke tests and allocator
 preload checks. Measurements reported here use the paper-closer path. It fixes
-Redis to version~6.0.9 and runs 2000 trials with 1,000,000 requests per
-operation, 50 clients, and pipeline depth~16. Each trial flushes the database
-and then benchmarks two operations:
+Redis to version~6.0.9 and uses 2000 trials, 50 clients, and pipeline depth~16.
+Each trial flushes the database and then runs two separate
+\code{redis-benchmark} invocations of 1,000,000 requests each:
 
 \begin{itemize}
 \item \code{LPUSH benchmark:list v1 v2 v3 v4 v5};
 \item \code{LRANGE benchmark:list 0 4}.
 \end{itemize}
+
+This structure is one reading of an underspecified sentence, and its consequences
+should be stated plainly. The paper describes a trial of one million requests
+``to push 5 elements and read those 5 elements''. The local trial issues one
+million pushes and then one million reads, so two million commands in total. All
+pushes precede all reads, which means \code{LRANGE} repeatedly reads the first
+five elements of a list that has grown to five million elements rather than
+reading each group just after it was pushed. An interleaved reading of the same
+sentence, one push and one read per request, would produce a different access
+pattern and a different live-heap shape. This report does not claim that its
+choice is the paper's; it records the choice so that the comparison can be judged
+and repeated.
 
 The runner stores the raw output of every operation as well as summary files,
 Redis logs, memory snapshots, allocator order, software revisions, and system
@@ -542,21 +558,32 @@ push-plus-read rate using the harmonic mean
 \[
   \frac{2}{1/r_{\mathrm{LPUSH}} + 1/r_{\mathrm{LRANGE}}}.
 \]
-This treats the two throughputs as rates for sequential operations and keeps the
-local comparison structurally aligned with the paper's single Redis delta per
-release mode. The harmonic-mean aggregation itself is not specified in the
+This treats the two throughputs as rates for sequential operations and reduces
+each block to one number, as the paper's single Redis delta per release mode
+does. The harmonic-mean aggregation itself is not specified in the
 paper. It is a local reconstruction choice because our public
 \code{redis-benchmark} harness records LPUSH and LRANGE as separate operation
 means, while the paper reports one Redis throughput delta for the combined
 push-five/read-five workload.
 
+Two further properties of this metric bound every comparison in
+Section~\ref{sec:results}. First, it is raw request throughput as
+\code{redis-benchmark} reports it, with no normalization for the CPU time
+consumed to achieve it, so it does not separate a throughput gain from a change
+in CPU cost. Second, it aggregates two operation rates that the paper never
+reports separately. A local percentage delta and a paper percentage delta can
+therefore sit close together while resting on differently constructed
+quantities. Where this report calls a value close to the paper's, it means
+numerical proximity between the local metric and the published number, not
+agreement between two instances of the same measurement.
+
 The hypothesis is modest, and follows from
 Section~\ref{sec:background-temeraire}. If the placement heuristic in
-\HugeFillerLabel{} improves hugepage coverage for the stream of small
-allocations that Redis creates, Redis should show a small positive throughput
-delta against the legacy pageheap. The effect should be clearest with periodic
-release disabled, since release-on adds interaction with background memory
-return and can mask the placement signal.
+\HugeFillerLabel{} improves hugepage coverage for the spans backing Redis's
+small allocations, Redis should show a small positive throughput delta against
+the legacy pageheap. The effect should be clearest with periodic release
+disabled, since release-on adds interaction with background memory return and
+can mask the placement signal.
 
 \subsection{Docker/WSL2 development stage}
 
@@ -672,7 +699,9 @@ uses the locally chosen rate of 16~MiB/s; release-off applies no rate.
 
 \begin{table}[ht]
 \caption{Bare-metal Temeraire throughput deltas. The release-on column uses a
-16~MiB/s background release rate.}
+16~MiB/s background release rate. The interval is a four-pair Student-t interval
+on the log-transformed pair ratios, so it accompanies the mean rather than the
+median. The paper's values use a differently constructed throughput metric.}
 \label{tab:bare-metal-pairs}
 \footnotesize
 \begin{tabular}{@{}lccc@{}}
@@ -686,7 +715,7 @@ Pair & Order & Release off & Release on \\
 \midrule
 Mean   & & $-0.282\%$ & $+0.513\%$ \\
 Median & & $-0.341\%$ & $+0.545\%$ \\
-95\% interval & & $[-1.04,+0.48]$ & $[-0.69,+1.73]$ \\
+95\% interval (mean) & & $[-1.04,+0.48]$ & $[-0.69,+1.73]$ \\
 Paper  & & $+0.75\%$  & $+0.44\%$ \\
 \bottomrule
 \end{tabular}
@@ -797,19 +826,27 @@ distributions.}
 \label{fig:bare-metal-distributions}
 \end{figure}
 
+Every interval in this section is a Student-t interval computed on the
+log-transformed pair ratios, using the four complete pairs as the replication
+unit. It therefore describes the central tendency of the pair effects, not the
+median reported beside it; for these data the two centres differ by less than
+$0.01$ percentage points.
+
 The release-off result no longer supports the positive WSL2 median. Two pairs
 are effectively neutral or slightly positive and two are negative, giving a
-median of $-0.34\%$ and an approximate run-level 95\% interval of
+median of $-0.34\%$, a mean of $-0.28\%$, and an interval of
 $[-1.04\%,+0.48\%]$. That interval excludes the paper's $+0.75\%$, so the native
 release-off aggregate is inconsistent with the paper's release-off row rather
 than merely quieter than it.
 
 Release-on at 16~MiB/s points the other way. Three of four pairs favor
-Temeraire, with a mean of $+0.51\%$ and a median of $+0.55\%$, both close to the
-paper's $+0.44\%$. The numerical match should not be overstated: the approximate
-95\% interval of $[-0.69\%,+1.73\%]$ rests on four pairs and also covers zero.
-The 2000 sequential trials inside one allocator block are autocorrelated, and
-count as one replication rather than 2000.
+Temeraire, with a mean of $+0.51\%$ and a median of $+0.55\%$, both numerically
+near the paper's $+0.44\%$. Three limits keep that from being a reproduction of
+the paper's value. The interval, $[-0.69\%,+1.73\%]$, rests on four pairs and
+covers zero. The 2000 sequential trials inside one allocator block are
+autocorrelated and count as one replication rather than 2000. And the two numbers
+being compared are built differently, as
+Section~\ref{sec:methodology} sets out.
 
 \subsection{Bare-metal release-rate sensitivity}
 
@@ -836,20 +873,22 @@ Rate & Pair 1 & Pair 2 & Pair 3 & Pair 4 & Mean & Median \\
 \end{tabular}
 \end{table}
 
-All four 64~MiB/s pairs favor legacy TCMalloc, and their 95\% interval,
-$[-0.92\%,-0.07\%]$, excludes zero. That rate is the only condition in the study
-where Temeraire is separable from the baseline, and it separates in the losing
-direction. At 256~MiB/s three pairs are negative and one is positive; the
-$-1.419\%$ pair drives the negative mean, and its interval,
-$[-1.54\%,+0.96\%]$, is uninformative. Inspection by trial quarter rules out a
+All four 64~MiB/s pairs favor legacy TCMalloc, and their interval,
+$[-0.92\%,-0.07\%]$, excludes zero. It is the only condition here whose
+unadjusted interval does so, which is worth recording but is weak evidence on its
+own: it rests on four pairs, on a normal approximation, and on one condition
+picked out of the four tested without any correction for multiple comparisons. At
+256~MiB/s three pairs are negative and one is positive; the $-1.419\%$ pair
+drives the negative mean, and its interval, $[-1.54\%,+0.96\%]$, is
+uninformative. Inspection by trial quarter rules out a
 short collapse in that block, with Temeraire between $1.2\%$ and $1.8\%$ slower
 in each quarter. The sequence is not monotonic: performance changes sign between
 16 and 64~MiB/s, then moves back toward zero at 256~MiB/s.
 
 The dedicated node removes the double-digit changes seen under WSL2 and replaces
 one allocator verdict with three, each tied to a configuration. Release-off is
-slightly negative, release-on at 16~MiB/s is close to the paper, and the two
-higher-rate aggregates are negative. For release-on the result depends on a
+slightly negative, release-on at 16~MiB/s lands near the paper's value, and the
+two higher-rate aggregates are negative. For release-on the result depends on a
 parameter the paper omits.
 
 \section{Discussion and Related Work}
@@ -860,24 +899,38 @@ as the public artifact allowed: the allocator split had to be rebuilt from
 public code, preload had to be verified at runtime, the compiler path had to be
 documented, and THP activity had to be observed rather than assumed.
 
-The move to bare metal settles one question raised by WSL2. The double-digit
-release-on deltas belonged to the host, not to Temeraire: native results stay
-within $1.5\%$ across every pair. The move also weakens the earlier release-off
-story, turning a positive WSL2 median into a negative native median. The
-environment was doing more than adding noise around a fixed result; it was
-setting the sign.
+The move to bare metal narrows one question raised by WSL2. The double-digit
+release-on deltas did not recur on node85, where every pair stays within
+$1.5\%$, so they were environment- or time-dependent rather than a repeatable
+property of Temeraire. The rerun cannot go further than that: it changed CPU
+generation, kernel, operating system, execution environment, and time period
+together, so it isolates none of them as the cause. The move also weakens the
+earlier release-off story, turning a positive WSL2 median into a negative native
+median. Whatever differs between the two settings is large enough to change the
+sign of the reported effect, which is the more important point for anyone reading
+either number.
 
-The release-on match at 16~MiB/s is encouraging but conditional. Since the paper
-omits its rate, 16~MiB/s has no claim to being the paper's setting, and the
+The release-on agreement at 16~MiB/s is encouraging but conditional. Since the
+paper omits its rate, 16~MiB/s has no claim to being the paper's setting, and the
 negative 64 and 256~MiB/s aggregates confine the numerical agreement to that one
-value. These data support a narrower claim: the public reconstruction can produce
-the paper's small positive effect under one recorded configuration.
+value. These data support a narrower claim: the public reconstruction lands in the
+paper's small positive range under one recorded configuration.
 
-Four pairs per condition remain few for sub-one-percent effects. Allocator blocks
-run consecutively, so slow changes in frequency, temperature, or system activity
-can survive inside a pair. The recorded metadata omits CPU governor, turbo state,
-temperature, and per-block allocator mappings; preload was verified once before
-the run rather than inside every result directory.
+Two measurement gaps limit how far any of these comparisons can be pushed, and
+both are properties of the reconstruction rather than of the results. The local
+metric is raw \code{redis-benchmark} throughput, aggregated across two operations
+by a harmonic mean this report chose, and it carries no normalization for CPU
+time; the published Redis deltas are single figures whose construction the
+artifact cannot reproduce. Separately, the paper's one-million-request trial
+``to push 5 elements and read those 5 elements'' admits more than one
+implementation, and the sequential two-million-command form used here is one of
+them. Both gaps mean a matching percentage is a weaker result than it looks.
+
+Four pairs per condition also remain few for sub-one-percent effects. Allocator
+blocks run consecutively, so slow changes in frequency, temperature, or system
+activity can survive inside a pair. The recorded metadata omits CPU governor,
+turbo state, temperature, and per-block allocator mappings; preload was verified
+once before the run rather than inside every result directory.
 
 Environmental fidelity also remains limited. The paper specifies the Redis
 version, benchmark shape, CPU family, LLVM commit, and optimization level, and
@@ -911,19 +964,19 @@ checks, compiler metadata, THP controls, and memory instrumentation.
 The WSL2 stage produced a working and instrumented experiment, but host drift
 made its release-on sweep unsuitable as final evidence. Repeating the same
 workload on dedicated bare-metal Linux removed those extreme swings and changed
-the interpretation. Release-off has a median of $-0.34\%$ against the paper's
-$+0.75\%$, with a 95\% interval that excludes the paper's value. Release-on at
-16~MiB/s has a median of $+0.55\%$, close to the paper's $+0.44\%$, while the
+the interpretation. Release-off has a median of $-0.34\%$ and a mean of
+$-0.28\%$, whose 95\% interval excludes the paper's $+0.75\%$. Release-on at
+16~MiB/s has a median of $+0.55\%$ against the paper's $+0.44\%$, while the
 medians at 64 and 256~MiB/s are $-0.60\%$ and $-0.08\%$.
 
-The reproduction therefore reaches the same small positive Redis regime under one
-explicit release configuration rather than across the experiment as a whole. Its
-main contribution is the path from an unsuitable starting artifact, through build
-and release-control failures, to a native run whose raw data and settings can be
-audited. Google's fleet-scale claims and the production-era environment stay
-outside its reach.
+The reproduction therefore lands in the same small positive Redis range under one
+explicit release configuration rather than across the experiment as a whole, and
+it does so with a locally reconstructed workload and an unnormalized throughput
+metric that the paper's figures do not share. Its main contribution is the path
+from an unsuitable starting artifact, through build and release-control failures,
+to a native run whose raw data and settings can be audited. Google's fleet-scale
+claims and the production-era environment stay outside its reach.
 
-\clearpage
 \hbadness=10000
 \bibliographystyle{ACM-Reference-Format}
 \bibliography{temeraire-seminar-report}
