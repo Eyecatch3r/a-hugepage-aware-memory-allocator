@@ -291,7 +291,7 @@ block.
 
 | Value | Trial structure |
 |---|---|
-| `sequential` (default) | One LPUSH run, then one LRANGE run. Two commands per request. All pushes run before all reads. |
+| `sequential` (default) | One LPUSH run, then one LRANGE run: two separate N-request command streams (2N commands total). All pushes run before all reads. |
 | `combined` | One run of an `EVAL` script that pushes five elements and reads those five back. One command per request. |
 
 Run both values to measure the effect of the choice. Neither value is correct on
@@ -305,6 +305,39 @@ PAPER_NUMA_NODE=0 \
 PAPER_BACKGROUND_RELEASE_RATE_BPS=16777216 \
 ./scripts/run_bare_metal_redis_experiment.sh --allocator-order balanced
 ```
+
+#### Detached SSH run with `setsid`
+
+Use the detached launcher for a full run that must survive closing the SSH
+connection. It preserves the `PAPER_*` and `REDIS_*` environment, redirects all
+terminal file descriptors, ignores `SIGHUP`, and records a durable log, PID, and
+final exit status under `results/run-logs/`.
+
+```bash
+PAPER_WORKLOAD=combined \
+PAPER_NUMA_NODE=0 \
+PAPER_BACKGROUND_RELEASE_RATE_BPS=16777216 \
+REDIS_MAX_TRIAL_ATTEMPTS=1 \
+bash ./scripts/launch_bare_metal_rerun_detached.sh --allocator-order balanced
+```
+
+The conservative command disables invocation-level retries. A failed LPUSH or
+combined EVAL may already have changed Redis before its connection fails, and
+CPU consumed by a failed attempt cannot be removed from the block total. Until
+retry is moved around the complete flush-and-workload trial, aborting preserves
+the validity of the normalized result.
+
+The launcher prints the exact paths for the run. It is safe to close SSH after
+it prints `Detached rerun started`. After reconnecting, inspect the files with:
+
+```bash
+tail -f results/run-logs/bare-metal-rerun-*.log
+cat results/run-logs/bare-metal-rerun-*.status
+```
+
+`state=running` means the detached wrapper is still active. On completion the
+status changes to `state=finished` and includes `exit_code=0`; any other exit
+code means the run failed and the log contains the error.
 
 #### CPU time
 

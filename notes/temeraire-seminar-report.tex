@@ -1020,6 +1020,19 @@ At 68 minutes per allocator block, the release-off and 16~MiB/s conditions come
 to about eighteen hours of node time for four pairs, and the full matrix across
 both workload forms and all three rates to roughly three days.
 
+Preparing that run exposed one more operational problem. The benchmark process
+was still attached to the SSH login session, so closing the connection terminated
+the parent shell; its \code{EXIT} trap then shut Redis down cleanly even though the
+experiment was incomplete. Long runs are now started through a small
+\code{setsid} launcher that creates a new session, ignores \code{SIGHUP}, redirects
+all terminal file descriptors, and records a persistent log, PID, and final exit
+status. A separate transient connection reset also showed that retrying only one
+\code{redis-benchmark} invocation is not safe. A failed \code{LPUSH} or combined
+\code{EVAL} may already have changed Redis state, and its CPU work remains in the
+block total even if its requests are discarded. Invocation-level retries are
+therefore disabled for the correction run; a future retry must restart the whole
+flush-and-workload trial and account for CPU time explicitly.
+
 The hardware gap survives all of this. Matching the paper's Skylake Xeons needs a
 different machine, not a different script, so the corrected run will either move
 to a Skylake or Cascade Lake node if the cluster provides one, or state again
