@@ -33,3 +33,6 @@ output/
 tmp/
 
 !.gitkeep
+
+# Git Bash crash dumps
+*.stackdump
