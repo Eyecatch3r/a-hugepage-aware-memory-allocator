@@ -319,8 +319,8 @@
           </article>
           <article class="claim claim-limited">
             <span>Not supported</span>
-            <h2>The metric is not the same quantity</h2>
-            <p>This test reports raw requests per second. It applies no normalization for CPU time, and it joins two operation rates with a harmonic mean that the paper does not specify. A local percentage and a paper percentage can be close and still measure different things.</p>
+            <h2>The metric is a different quantity</h2>
+            <p>The paper normalizes its throughput for CPU and reports requests per second per core. This test reports the unnormalized rate, joined across two operations by a harmonic mean the paper does not specify. A local percentage and a paper percentage can be close and still measure different things.</p>
           </article>
           <article class="claim claim-limited">
             <span>Not supported</span>

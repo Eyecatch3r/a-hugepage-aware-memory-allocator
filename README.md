@@ -382,7 +382,25 @@ Raw outputs must not be modified. Derived tables, plots, and summaries go in `re
 
 ## Known Deviations from the Paper
 
-Expected deviations include host CPU, kernel version, Transparent Huge Page (THP) settings, Docker behavior, compiler version, and the fact that public TCMalloc source is only an approximation of the internal paper artifact. Results should be interpreted accordingly.
+The paper states five properties of its Redis experiment. This artifact matches
+three of them and does not match two:
+
+| Property the paper states | This artifact |
+|---|---|
+| Redis 6.0.9 | matched |
+| Legacy TCMalloc pageheap as the baseline | matched, through `want_no_hpaa` |
+| LLVM commit `cd442157cf` with `-O3` | matched, built from source |
+| Intel Skylake Xeon processors | **not matched.** Node85 has a Xeon Gold 5318N, an Ice Lake part |
+| Throughput normalized for CPU | **not matched.** This artifact reports the unnormalized rate |
+
+The paper does not state the Linux distribution, the kernel version, the THP
+policy, or the background release rate for Redis. Record those values locally,
+because you cannot match them.
+
+Further deviations apply to the Docker/WSL runs: the container adds its own
+behavior, and the shared kernel supplies the THP policy. The public TCMalloc
+source stays a historical approximation of the internal paper artifact in both
+workflows.
 
 ## Current Result Interpretation
 
@@ -392,21 +410,29 @@ reproduction of the Redis rows in Table 1 of the paper.
 The paper gives two Redis values: `+0.75%` with periodic release off, and
 `+0.44%` with periodic release on.
 
-Two differences apply to every comparison with those two values. Keep them in
-mind before you read a matching percentage as a reproduction.
+Three differences apply to every comparison with those two values. Read them
+before you read a matching percentage as a reproduction.
 
-1. **The metric is not the same quantity.** This artifact reports raw
-   `redis-benchmark` requests per second. It applies no normalization for the CPU
-   time that the work consumed, and it joins two operation rates with a harmonic
-   mean that the paper does not specify. A local percentage and a paper
-   percentage can be close together and still measure different things.
+1. **The metric is a different quantity.** The caption of Table 1 in the paper
+   states that its throughput is "normalized for CPU", and the text gives the
+   unit as requests per second per core. This artifact reports the unnormalized
+   request rate from `redis-benchmark`, and it joins two operation rates with a
+   harmonic mean that the paper does not specify. A ratio of unnormalized rates
+   cannot separate a real throughput gain from the same throughput at a higher
+   CPU cost. No local number can confirm or contradict a normalized figure.
 2. **The workload is one reading of an underspecified sentence.** The paper
-   describes a trial of one million requests "to push 5 elements and read those 5
-   elements". Each local trial runs 1,000,000 LPUSH commands and then 1,000,000
-   LRANGE commands. That is two million commands. All pushes run before all
-   reads, so LRANGE reads the first five elements of a list of five million
-   elements. It does not read each group of five immediately after the push. An
-   interleaved reading of the same sentence gives a different access pattern.
+   specifies 2000 trials, each trial making one million requests "to push 5
+   elements and read those 5 elements". Read literally, one request covers the
+   push and the read. Each local trial instead runs 1,000,000 LPUSH commands and
+   then 1,000,000 LRANGE commands, which is two million commands. All pushes run
+   before all reads, so `LRANGE 0 4` returns the same final five elements on
+   every read while the list holds five million. An interleaved implementation
+   keeps the live set small and touches memory that was just written. That is a
+   different access pattern for the allocator under test.
+3. **The processor generation differs.** The paper ran Redis on Intel Skylake
+   Xeon processors. Node85 has a Xeon Gold 5318N, which is an Ice Lake part. TLB
+   capacity and hugepage handling changed between the two generations, so the
+   hardware that matters most to a TLB-pressure result is not matched.
 
 ### Reported result: the bare-metal node85 run
 
@@ -440,7 +466,7 @@ Read these four rows together:
 
 The defensible claim is narrow. The public reconstruction lands in the small
 positive Redis range of the paper in one recorded release configuration. It does
-not land there across release modes and rates. The two differences listed above
+not land there across release modes and rates. The three differences listed above
 also apply, so this is proximity between two differently built numbers.
 
 ### Historical result: the Docker/WSL runs

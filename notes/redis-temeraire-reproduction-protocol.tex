@@ -875,14 +875,31 @@ legacy side; with four pairs, a normal approximation, and four conditions tested
 without correction, that is worth recording rather than treating as an
 established effect.
 
-Two comparability limits apply to the whole table. The local metric is raw
-\texttt{redis-benchmark} throughput with no normalization for CPU time, joined
-across two operations by a harmonic mean that the paper does not specify. And
-the paper's one-million-request trial ``to push 5 elements and read those 5
-elements'' admits more than one implementation; the sequential form used here
-issues one million pushes and then one million reads, two million commands in
-total, with every push preceding every read. A percentage that matches the paper
-is therefore proximity between differently built quantities.
+Three comparability limits apply to the whole table, all confirmed against the
+paper text.
+
+\begin{itemize}[leftmargin=1.5em]
+  \item \textbf{Different metric.} The caption of Table~1 in Hunter et al.\ says
+  its throughput is ``normalized for CPU'', and the text gives the unit as
+  requests per second per core. The local figure is unnormalized and is joined
+  across two operations by a harmonic mean the paper does not specify. A ratio of
+  unnormalized rates cannot separate a throughput gain from the same throughput
+  at higher CPU cost, so no local number can confirm or contradict a normalized
+  one.
+  \item \textbf{Different workload construction.} The paper specifies 2000
+  trials, each making one million requests ``to push 5 elements and read those 5
+  elements''. Read literally, one request covers both. The local trial issues one
+  million pushes and then one million reads, two million commands, with every
+  push before every read, so \texttt{LRANGE 0 4} re-reads the same final five
+  elements of a five-million-element list.
+  \item \textbf{Different processor generation.} The paper ran Redis on Intel
+  Skylake Xeon processors. Node85 carries a Xeon Gold 5318N, an Ice Lake part.
+  TLB capacity and hugepage handling changed between those generations, which is
+  the hardware property a TLB-pressure result depends on most.
+\end{itemize}
+
+A percentage that matches the paper is therefore proximity between differently
+built quantities on different hardware.
 
 \subsection{Audit}
 
