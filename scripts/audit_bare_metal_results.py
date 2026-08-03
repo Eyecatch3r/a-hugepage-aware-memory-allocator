@@ -66,6 +66,10 @@ class AuditConfig:
     expected_requests: int = 1_000_000
     expected_pairs: int = 4
     release_rate_bps: int = 16_777_216
+    # "any" audits every workload in the tree. Naming one restricts the audit to
+    # manifests that used it, so a tree holding both readings of the paper's
+    # trial sentence can be audited one reading at a time.
+    workload: str = "any"
     expected_llvm_ref: str = EXPECTED_LLVM_REF
     expected_tcmalloc_ref: str = EXPECTED_TCMALLOC_REF
     expected_redis_version: str = EXPECTED_REDIS_VERSION
@@ -439,6 +443,17 @@ def t_critical_95(degrees_of_freedom: int) -> float:
     return T_CRITICAL_95[max(lower)] if lower else T_CRITICAL_95[1]
 
 
+def manifest_matches_workload(values: dict[str, str], wanted: str) -> bool:
+    """Whether a manifest belongs to the requested workload.
+
+    Manifests written before the workload became selectable carry no key. Those
+    runs all used the sequential form.
+    """
+    if wanted == "any":
+        return True
+    return values.get("workload", "sequential") == wanted
+
+
 def read_manifests(manifest_root: Path) -> list[tuple[str, dict[str, str]]]:
     """Return every manifest in timestamp order."""
     require(manifest_root.is_dir(), f"missing manifest directory: {manifest_root}")
@@ -473,6 +488,7 @@ def audit_dataset(config: AuditConfig, archive_sha256: str | None = None) -> Aud
         for timestamp, values in all_manifests
         if values.get("trials") == str(config.expected_trials)
         and values.get("allocator_order") == "balanced"
+        and manifest_matches_workload(values, config.workload)
     ]
     require(len(manifests) == config.expected_pairs, f"expected {config.expected_pairs} full manifests, got {len(manifests)}")
     balanced_runs = [int(values.get("balanced_run_number", "0")) for _, values in manifests]
@@ -600,6 +616,7 @@ def audit_sensitivity(config: AuditConfig, archive_sha256: str | None = None) ->
         and values.get("run_release_on") == "1"
         and values.get("background_release_rate_bps_override", "").isdigit()
         and int(values.get("background_release_rate_bps_override", "0")) > 0
+        and manifest_matches_workload(values, config.workload)
     ]
     require(bool(manifests), f"no sensitivity manifests found in {manifest_root}")
     redis_runs = sorted(path for path in redis_root.glob("*-paper-release-on") if path.is_dir())
@@ -892,6 +909,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-pairs", type=int, default=4)
     parser.add_argument("--release-rate-bps", type=int, default=16_777_216)
     parser.add_argument(
+        "--workload",
+        choices=("any", "sequential", "combined"),
+        default="any",
+        help=(
+            "Restrict the audit to manifests that used this workload. Use it when "
+            "one result tree holds both readings of the paper's trial sentence."
+        ),
+    )
+    parser.add_argument(
         "--mode",
         choices=("balanced", "sensitivity"),
         default="balanced",
@@ -918,6 +944,7 @@ def main() -> int:
             expected_requests=args.expected_requests,
             expected_pairs=args.expected_pairs,
             release_rate_bps=args.release_rate_bps,
+            workload=args.workload,
         )
         if args.mode == "sensitivity":
             sensitivity = audit_sensitivity(config, archive_sha256)

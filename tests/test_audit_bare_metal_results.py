@@ -297,6 +297,30 @@ class WorkloadTests(unittest.TestCase):
             with self.assertRaisesRegex(AuditError, "expected 4 trial rows"):
                 audit_dataset(self.config(raw))
 
+    def test_workload_filter_selects_matching_manifests(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary), workload="combined")
+            manifest = raw / "paper-closer" / "20260101T000000Z" / "manifest.txt"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8") + "workload=combined\n",
+                encoding="utf-8",
+            )
+
+            wanted = AuditConfig(
+                raw_dir=raw, expected_trials=2, expected_requests=1_000,
+                expected_pairs=1, workload="combined",
+            )
+            self.assertEqual(audit_dataset(wanted).workloads, ("combined",))
+
+            # A manifest without the key counts as sequential, so asking for the
+            # other reading must find nothing rather than audit the wrong blocks.
+            other = AuditConfig(
+                raw_dir=raw, expected_trials=2, expected_requests=1_000,
+                expected_pairs=1, workload="sequential",
+            )
+            with self.assertRaisesRegex(AuditError, "expected 1 full manifests, got 0"):
+                audit_dataset(other)
+
     def test_unknown_workload_stops_the_audit(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             raw = create_dataset(Path(temporary))
