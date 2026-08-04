@@ -267,8 +267,22 @@ write_thp_state "${RUN_DIR}/thp-before.txt"
 RESULTS_CSV="${RUN_DIR}/trials.csv"
 echo "trial,operation,requests,rps" > "${RESULTS_CSV}"
 
+# Pull the requests-per-second value out of redis-benchmark --csv output.
+#
+# The first CSV field is the test name, which redis-benchmark builds from the
+# command line. For an EVAL run that name contains the Lua script, and the
+# script contains commas, so splitting the line on commas does not locate the
+# rate. Drop the quoted test name first, then take the field that follows it.
 extract_rps() {
-  awk -F',' 'NF >= 2 {gsub(/"/, "", $2); print $2}' | tail -n 1
+  awk '
+    /^"/ {
+      line = $0
+      sub(/^"[^"]*",/, "", line)
+      gsub(/"/, "", line)
+      split(line, fields, ",")
+      if (fields[1] != "") print fields[1]
+    }
+  ' | tail -n 1
 }
 
 TRIAL_RETRIES=0
