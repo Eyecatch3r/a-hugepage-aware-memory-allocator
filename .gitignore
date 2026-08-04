@@ -14,8 +14,9 @@ results/node85-*/raw/redis/*/trial-*.csv
 
 # Result archives. Each archive is large. Keep the archives out of Git and
 # publish them separately.
-temeraire-node85-*.tar.gz
-temeraire-node85-*.tar.gz.sha256
+temeraire-*.tar.gz
+temeraire-*.tar.gz.sha256
+downloaded-results/
 
 # LaTeX build files. Keep these patterns inside notes/ only. Redis writes
 # redis-server.log files into the result directories.
