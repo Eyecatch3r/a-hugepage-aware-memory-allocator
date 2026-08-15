@@ -484,13 +484,15 @@ The paper gives two Redis values: `+0.75%` with periodic release off, and
 Three differences apply to every comparison with those two values. Read them
 before you read a matching percentage as a reproduction.
 
-1. **The metric is a different quantity.** The caption of Table 1 in the paper
-   states that its throughput is "normalized for CPU", and the text gives the
-   unit as requests per second per core. This artifact reports the unnormalized
-   request rate from `redis-benchmark`, and it joins two operation rates with a
-   harmonic mean that the paper does not specify. A ratio of unnormalized rates
-   cannot separate a real throughput gain from the same throughput at a higher
-   CPU cost. No local number can confirm or contradict a normalized figure.
+1. **The metric is a different quantity, but the difference is small here.** The
+   caption of Table 1 in the paper states that its throughput is "normalized for
+   CPU", and the text gives the unit as requests per second per core. The
+   correction run records CPU time and reports both units. The two differ by less
+   than 0.1 percentage points, because Redis 6.0.9 runs commands on one thread
+   and the benchmark keeps that thread busy: each block held between 98 and 99.7
+   percent of one core. Do not carry this finding over to a multithreaded
+   application. Runs before August 2026 have no CPU record and report the raw
+   rate only.
 2. **The workload is one reading of an underspecified sentence.** The paper
    specifies 2000 trials, each trial making one million requests "to push 5
    elements and read those 5 elements". Read literally, one request covers the
@@ -505,11 +507,55 @@ before you read a matching percentage as a reproduction.
    capacity and hugepage handling changed between the two generations, so the
    hardware that matters most to a TLB-pressure result is not matched.
 
-### Reported result: the bare-metal node85 run
+### Reported result: the correction run
 
-The report uses these results only. Each value is one matched pair of a legacy
-block and a Temeraire block, at 2000 trials for each block. A positive value
-means that Temeraire was faster.
+These are the reported results. The correction run of August 2026 records the CPU
+time of each block, so it can report throughput in the unit that the paper uses.
+Each value is one matched pair of a legacy block and a Temeraire block, at 2000
+trials for each block. A positive value means that Temeraire was faster.
+
+| Condition | Pairs | Mean | Median | 95% interval | Positive | Paper |
+|---|---:|---:|---:|---:|---:|---:|
+| Release off | 4 | +0.022% | +0.037% | [-0.62%, +0.67%] | 2/4 | +0.75% |
+| Release off, per CPU second | 4 | +0.091% | +0.116% | [-0.74%, +0.93%] | 3/4 | +0.75% |
+| Release on, 16 MiB/s | 4 | +0.401% | +0.403% | [+0.20%, +0.61%] | 4/4 | +0.44% |
+| Release on, per CPU second | 4 | +0.474% | +0.464% | [+0.30%, +0.65%] | 4/4 | +0.44% |
+
+Read these four rows together:
+
+- **Release-on reproduces the paper.** All four pairs favor Temeraire. Both
+  intervals exclude zero, and both contain the paper's `+0.44%`. This holds in
+  raw throughput and in the paper's own unit.
+- **Release-off is unresolved.** The interval covers zero. It also covers the
+  paper's `+0.75%` once the result is normalized. Four pairs cannot settle this
+  condition.
+- **The paper does not state a release rate.** The 16 MiB/s value is a local
+  parameter. Do not read it as the value that the paper used.
+
+Regenerate both tables with:
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode balanced --workload sequential \
+  --raw-dir results/node85-rerun/raw \
+  --output-dir results/processed/node85-rerun-sequential
+```
+
+The same run measured the second reading of the paper's trial sentence. That
+reading costs 4.11 hours per block against 1.14, and it gives much wider
+intervals, so the sequential reading is the better instrument. Use
+`--workload combined` to regenerate this table.
+
+| Condition | Pairs | Mean | Median | 95% interval | Positive |
+|---|---:|---:|---:|---:|---:|
+| Release off | 4 | +0.678% | +0.842% | [-0.37%, +1.73%] | 3/4 |
+| Release on, 16 MiB/s | 4 | +0.249% | -0.194% | [-2.21%, +2.75%] | 1/4 |
+
+### First bare-metal run, July 2026
+
+This run has no CPU record, so it cannot report the paper's unit. Its release-on
+result agrees in direction with the correction run. Its release-off result does
+not: the two samples give -0.34% and +0.037%, with intervals that overlap almost
+completely. Read them together as one condition that four pairs cannot resolve.
 
 | Condition | Pairs | Mean | Median | 95% interval | Paper |
 |---|---:|---:|---:|---:|---:|
@@ -518,27 +564,13 @@ means that Temeraire was faster.
 | Release on, 64 MiB/s | 4 | -0.49% | -0.60% | [-0.92%, -0.07%] | not stated |
 | Release on, 256 MiB/s | 4 | -0.29% | -0.08% | [-1.54%, +0.96%] | not stated |
 
-The interval is a Student-t interval on the log-transformed pair ratios, with the
-four complete pairs as the replication unit. It belongs to the mean, not to the
-median beside it. For these four conditions the two centers differ by less than
-0.01 percentage points.
+At 64 MiB/s all four pairs favor legacy TCMalloc, and the interval excludes zero.
+Four conditions were tested, and no correction for multiple comparisons was
+applied. Record this result, but do not call it an established effect.
 
-Read these four rows together:
-
-- Release-off does not reproduce the paper. Its 95% interval excludes `+0.75%`.
-- Release-on at 16 MiB/s is close to the paper. Its interval also covers zero.
-  This is agreement in one configuration. It is not a confirmed effect.
-- The paper does not state a release rate. The 16 MiB/s value is a local
-  parameter. Do not read it as the value that the paper used.
-- At 64 MiB/s all four pairs favor legacy TCMalloc, and the interval excludes
-  zero. This is the only condition here whose unadjusted interval does so. Four
-  conditions were tested, and no correction for multiple comparisons was applied.
-  Record this result, but do not call it an established effect.
-
-The defensible claim is narrow. The public reconstruction lands in the small
-positive Redis range of the paper in one recorded release configuration. It does
-not land there across release modes and rates. The three differences listed above
-also apply, so this is proximity between two differently built numbers.
+Every interval on this page is a Student-t interval on the log-transformed pair
+ratios, with the complete pairs as the replication unit. It belongs to the mean,
+not to the median beside it.
 
 ### Historical result: the Docker/WSL runs
 

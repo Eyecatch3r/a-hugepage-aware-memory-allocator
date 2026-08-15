@@ -1,0 +1,81 @@
+allocator=temeraire
+allocator_note=paper-era public google/tcmalloc build using the hugepage-aware Temeraire path
+run_label=paper-release-on
+timestamp_utc=20260805T054059Z
+pid=1547834
+port=6380
+trials=2000
+requests_per_trial=1000000
+clients=50
+pipeline=16
+numa_node=0
+snapshot_every_trials=250
+workload=sequential
+background_release_enabled=1
+background_release_rate_bps=16777216
+build_exact_llvm=0
+llvm_ref_requested=unknown
+
+## benchmark_methodology
+Each trial runs two redis-benchmark invocations:
+1. LPUSH benchmark:list v1 v2 v3 v4 v5
+2. LRANGE benchmark:list 0 4
+Commands per trial is twice requests_per_trial, and every push
+precedes every read.
+
+## status
+VmSize:	   98828 kB
+VmHWM:	    5940 kB
+VmRSS:	    5940 kB
+RssAnon:	    1180 kB
+RssFile:	    4760 kB
+
+## cpu
+clk_tck=100
+proc_utime_ticks=0
+proc_stime_ticks=0
+proc_cutime_ticks=0
+proc_cstime_ticks=0
+proc_cpu_seconds=0.000000
+used_cpu_sys=0.001154
+used_cpu_user=0.007891
+used_cpu_sys_children=0.000000
+used_cpu_user_children=0.000000
+nproc_online=48
+
+## smaps_rollup
+00400000-7ffece13c000 ---p 00000000 00:00 0                              [rollup]
+Rss:                5940 kB
+Pss:                3968 kB
+Pss_Dirty:          1180 kB
+Pss_Anon:           1180 kB
+Pss_File:           2788 kB
+Pss_Shmem:             0 kB
+Shared_Clean:       2124 kB
+Shared_Dirty:          0 kB
+Private_Clean:      2636 kB
+Private_Dirty:      1180 kB
+Referenced:         5940 kB
+Anonymous:          1180 kB
+KSM:                   0 kB
+LazyFree:              0 kB
+AnonHugePages:         0 kB
+ShmemPmdMapped:        0 kB
+FilePmdMapped:         0 kB
+Shared_Hugetlb:        0 kB
+Private_Hugetlb:       0 kB
+Swap:                  0 kB
+SwapPss:               0 kB
+Locked:                0 kB
+
+## thp_state
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+[always] madvise never
+always defer defer+madvise [madvise] never
+511

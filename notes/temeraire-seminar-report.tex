@@ -145,16 +145,21 @@ experiment, but long release-on runs showed throughput changes much larger than
 the effect in the paper. This prompted a second run on a dedicated bare-metal
 Debian node.
 
-The native run changes the result. With periodic release disabled, the median
-Temeraire delta is $-0.34\%$ and the mean is $-0.28\%$, with an approximate
-95\% interval of $[-1.04\%,+0.48\%]$ that excludes the paper's $+0.75\%$. With
-release enabled at the locally chosen rate of 16~MiB/s, the median is $+0.55\%$
-against the paper's $+0.44\%$. Further runs at 64 and 256~MiB/s give medians of
-$-0.60\%$ and $-0.08\%$. The bare-metal measurements remove the extreme WSL2
-swings and show that the small Redis result holds in one release configuration
-rather than across modes and rates. Throughout, the local metric is unnormalized
-request throughput where the paper normalizes for CPU, so these comparisons are
-proximity between differently constructed quantities.
+The native run removes the extreme WSL2 swings. It gives a median Temeraire
+delta of $-0.34\%$ with release disabled and $+0.55\%$ with release enabled at a
+locally chosen 16~MiB/s, against the paper's $+0.75\%$ and $+0.44\%$, and
+medians of $-0.60\%$ and $-0.08\%$ at 64 and 256~MiB/s. Reading the paper again
+against the harness then exposed a metric mismatch, since the paper normalizes
+throughput for CPU and the artifact did not record CPU time at all, so a
+corrected series was run.
+
+That series reproduces the paper's release-on result. Across four fresh pairs
+the delta is $+0.401\%$ raw and $+0.474\%$ per CPU second, with all four pairs
+positive and 95\% intervals of $[+0.20\%,+0.61\%]$ and $[+0.30\%,+0.65\%]$ that
+exclude zero and contain the paper's $+0.44\%$. Release-off centres on zero and
+stays unresolved at this sample size. Normalization proves to be worth under a
+tenth of a percentage point here, because a single-threaded Redis under a
+saturating benchmark holds one core throughout.
 \end{abstract}
 
 \begin{CCSXML} <ccs2012> <concept>
@@ -481,7 +486,7 @@ workspace did not inherit the right dependencies, and target visibility forced
 the wrapper into \code{tcmalloc/testing}.
 
 Runtime verification is necessary. Redis reports
-\code{mem_allocator: libc} from its own build metadata even when
+\texttt{mem\_allocator: libc} from its own build metadata even when
 \code{LD_PRELOAD} has replaced the process allocator, so the artifact checks
 \code{/proc/$pid/maps} to confirm that the intended shared library is mapped
 into the Redis process.
@@ -511,7 +516,7 @@ still marked the exact LLVM path as disabled, so the compiler metadata is treate
 as authoritative.
 
 The most important methodological difficulty was THP. Initial long runs under
-WSL2/Docker with THP in \code{madvise} mode recorded \code{AnonHugePages: 0 kB}
+WSL2/Docker with THP in \code{madvise} mode recorded \texttt{AnonHugePages: 0 kB}
 for Redis. These runs looked like controlled allocator comparisons while leaving
 the hugepage mechanism itself unevidenced. The harness was then extended to
 record THP settings and periodic \code{smaps_rollup} snapshots, and the final
@@ -532,8 +537,8 @@ Each trial flushes the database and then runs two separate
 \code{redis-benchmark} invocations of 1,000,000 requests each:
 
 \begin{itemize}
-\item \code{LPUSH benchmark:list v1 v2 v3 v4 v5};
-\item \code{LRANGE benchmark:list 0 4}.
+\item \texttt{LPUSH benchmark:list v1 v2 v3 v4 v5};
+\item \texttt{LRANGE benchmark:list 0 4}.
 \end{itemize}
 
 This structure is one reading of an underspecified sentence, and its consequences
@@ -543,7 +548,7 @@ million requests ``to push 5 elements and read those 5 elements''
 a trial performs one million of each. The local trial instead issues one million
 pushes and then one million reads, which doubles the command count to two
 million. It also separates the phases: because all pushes precede all reads,
-\code{LRANGE 0 4} returns the same final five elements on every read while the
+\texttt{LRANGE 0 4} returns the same final five elements on every read while the
 list holds five million, rather than returning each group just after that group
 was pushed. An interleaved implementation would keep the live set small and touch
 freshly written memory, which is a different access pattern and a different
@@ -846,9 +851,10 @@ $0.01$ percentage points.
 The release-off result no longer supports the positive WSL2 median. Two pairs
 are effectively neutral or slightly positive and two are negative, giving a
 median of $-0.34\%$, a mean of $-0.28\%$, and an interval of
-$[-1.04\%,+0.48\%]$. That interval excludes the paper's $+0.75\%$, so the native
-release-off aggregate is inconsistent with the paper's release-off row rather
-than merely quieter than it.
+$[-1.04\%,+0.48\%]$, which does not reach the paper's $+0.75\%$. A second
+four-pair sample in Section~\ref{sec:correction-results} centres on zero instead,
+and its interval does contain that value, so this run should be read as one
+sample of a condition that four pairs cannot resolve.
 
 Release-on at 16~MiB/s points the other way. Three of four pairs favor
 Temeraire, with a mean of $+0.51\%$ and a median of $+0.55\%$, both numerically
@@ -927,18 +933,18 @@ negative 64 and 256~MiB/s aggregates confine the numerical agreement to that one
 value. These data support a narrower claim: the public reconstruction lands in the
 paper's small positive range under one recorded configuration.
 
-Two measurement gaps limit how far any of these comparisons can be pushed, and
-both are properties of the reconstruction rather than of the results. The paper
-normalizes Redis throughput for CPU and reports requests per second per core; the
-local figure is an unnormalized request rate joined across two operations by a
-harmonic mean this report chose. A local delta therefore cannot distinguish a
-throughput gain from an unchanged throughput that costs more CPU, and it cannot
-confirm or contradict a normalized figure. Separately, the paper's
-one-million-request trial admits at least two implementations, and the sequential
-two-million-command form used here is one of them. Either gap alone would make a
-matching percentage weaker than it looks; together they mean the agreement at
-16~MiB/s should be read as the local reconstruction landing in the same
-small-effect range, and nothing stronger.
+Two measurement gaps limited how far these comparisons could be pushed, and the
+correction run in Section~\ref{sec:correction} measured the size of both. The
+paper normalizes Redis throughput for CPU and reports requests per second per
+core, while the local figure is an unnormalized request rate joined across two
+operations by a harmonic mean this report chose. That gap turns out to be worth
+under a tenth of a percentage point for this workload, because a single-threaded
+Redis under a saturating benchmark makes the two units almost the same quantity.
+The workload gap is larger: the paper's one-million-request trial admits at least
+two implementations, and measuring both showed that they differ by a factor of
+3.6 in cost and by an order of magnitude in the width of the interval they
+produce. Neither gap is closed by argument, and both are now quantified rather
+than conceded.
 
 Four pairs per condition also remain few for sub-one-percent effects. Allocator
 blocks run consecutively, so slow changes in frequency, temperature, or system
@@ -970,74 +976,191 @@ Ingens and HawkEye manage huge pages from the OS side and are complementary to
 allocator-side placement
 \cite{10.5555/3026877.3026931,10.1145/3297858.3304064}.
 
-\section{Planned Correction Run}
-\label{sec:planned-rerun}
+\section{Correction Run}
+\label{sec:correction}
 
-Two of the three gaps described above can be closed by changing the harness, and
-a third cannot. The results in Section~\ref{sec:results} predate that work. They
-are reported as they stand, and a corrected run is prepared rather than
-completed.
+\subsection{Why the measurements were repeated}
+\label{sec:why-rerun}
 
-The metric is the change worth making first. Recording CPU time costs almost
-nothing: Redis restarts for every allocator block, so \code{redis-cli info cpu}
-at the end of a block returns \code{used\_cpu\_user} and \code{used\_cpu\_sys}
-for exactly that block, and requests divided by CPU seconds gives the paper's
-unit. The reason to spend a day of node time on it is that normalization may not
-just restate the release-on result. It may move it. With release enabled,
-TCMalloc runs a background thread that issues \code{MADV_DONTNEED}, and that
-thread consumes CPU the release-off condition never spends. An unnormalized rate
-cannot tell the two cases apart, so the $+0.55\%$ reported at 16~MiB/s is
-consistent both with Temeraire serving more requests and with Temeraire serving
-the same requests less cheaply. The corrected run will separate them.
+The results in Section~\ref{sec:results} were complete, audited, and wrong in
+ways that only became visible afterwards. Three problems surfaced, in an order
+worth recording, because the last two were faults in the harness that produced
+those very numbers.
 
-The workload ambiguity is handled the way the unstated release rate already is,
-by measuring both readings instead of choosing one. The sequential form stays as
-it is. The literal form, where one request performs the push and the read
-together, can be driven through \code{redis-benchmark} with a short
-\code{EVAL} script. Neither form is clean: the sequential one doubles the command
-count and separates the phases, while the Lua path adds interpreter allocations
-to a measurement whose subject is allocation. Reporting both is more honest than
-defending either, and it turns an underspecified sentence into a recorded
-experimental dimension.
+The first came from reading the paper again with the harness open alongside it.
+The caption of Table~1 in Hunter et al.\ says that its throughput is
+``normalized for CPU'', and the surrounding text gives the unit as requests per
+second per core \cite{273711}. The local figure was an unnormalized request
+rate. A ratio of unnormalized rates cannot distinguish Temeraire serving more
+requests from Temeraire serving the same requests at higher CPU cost, and the
+artifact recorded no CPU time at all, so the distinction could not be recovered
+from the archived runs. The same reading showed that the paper's trial, one
+million requests ``to push 5 elements and read those 5 elements'', supports a
+second implementation in which one request performs both operations, and that
+the paper's Redis servers used Skylake Xeons while node85 carries an Ice Lake
+part. Two of those three gaps could be closed by changing the harness. The
+processor could not.
 
-The run will also spend its time differently. Between-pair variation dominates
-the uncertainty in Table~\ref{tab:bare-metal-pairs}: the standard deviation
-across the four release-off deltas is $0.48$ percentage points, and across the
-release-on deltas $0.76$, while the standard error of a single block mean at
-2000 trials is near $0.08$ even before autocorrelation is considered. The 2000
-trials therefore measure each block far more precisely than the four pairs
-measure the effect. Cutting to 500 trials raises the block standard error to
-roughly $0.16$ percentage points, still small against the between-pair spread,
-and frees enough time for sixteen pairs at the same total cost. That reduces the
-interval width by about a factor of three, which is the difference between an
-interval that covers zero and one that can resolve an effect of half a percent.
-Because 2000 trials is a property the paper does state, the corrected series will
-keep one condition at 2000 trials for fidelity and use the shorter blocks for the
-pairs that carry the inference. Reporting at 90\% rather than 95\% would also
-match the paper's stated intervals.
+The second problem appeared eighteen hours into the first attempt at a corrected
+run. A block died at trial 1875 of 2000 with \texttt{Connection reset by peer},
+and the Redis log for that block showed a clean shutdown, which made the failure
+look like a transient fault on a shared node. It was not. The run had been
+started with a plain background \code{\&} from an interactive shell, so it stayed
+inside the SSH session, and the session had ended. Redis ignores \code{SIGHUP}
+at startup and \code{redis-benchmark} does not, so the hangup killed the client,
+left the server running, and the script's exit trap then shut that server down
+politely. The clean shutdown was the consequence of the failure rather than
+evidence against it. An hour of completed trials went in the bin for a signal
+that had nothing to do with the allocator.
 
-At 68 minutes per allocator block, the release-off and 16~MiB/s conditions come
-to about eighteen hours of node time for four pairs, and the full matrix across
-both workload forms and all three rates to roughly three days.
+The third problem destroyed a whole day of compute and was entirely self
+inflicted. \code{redis-benchmark} builds its CSV test name from the command
+line, so a run driven by an \code{EVAL} script carries the whole Lua source in
+that field, commas included. The harness read the rate by splitting the line on
+commas and taking the second field, which for such a run is the fragment
+\code{KEYS[1]}. Every trial of the first sixteen-hour block recorded that string,
+and the block mean came out as zero. Plain \code{LPUSH} and \code{LRANGE} names
+contain no commas, which is why the fault stayed hidden until the second workload
+ran for the first time.
 
-Preparing that run exposed one more operational problem. The benchmark process
-was still attached to the SSH login session, so closing the connection terminated
-the parent shell; its \code{EXIT} trap then shut Redis down cleanly even though the
-experiment was incomplete. Long runs are now started through a small
-\code{setsid} launcher that creates a new session, ignores \code{SIGHUP}, redirects
-all terminal file descriptors, and records a persistent log, PID, and final exit
-status. A separate transient connection reset also showed that retrying only one
-\code{redis-benchmark} invocation is not safe. A failed \code{LPUSH} or combined
-\code{EVAL} may already have changed Redis state, and its CPU work remains in the
-block total even if its requests are discarded. Invocation-level retries are
-therefore disabled for the correction run; a future retry must restart the whole
-flush-and-workload trial and account for CPU time explicitly.
+That last one was recoverable, because the runner writes each benchmark
+invocation's output to its own file before deriving anything from it. Those files
+held the correct rates the whole time. A separate utility re-derives
+\code{trials.csv} and \code{summary.csv} from them, so the sixteen hours were
+repaired rather than repeated. The episode still points at a real weakness in
+the audit: it compares the summary against the aggregated trial table, and both
+descend from the same extraction, so it caught this only because
+\code{KEYS[1]} is not a number. A plausible but wrong value would have passed.
 
-The hardware gap survives all of this. Matching the paper's Skylake Xeons needs a
-different machine, not a different script, so the corrected run will either move
-to a Skylake or Cascade Lake node if the cluster provides one, or state again
-that the processor generation is the one specified property this reproduction does
-not meet.
+\subsection{What the harness now records}
+
+Four changes came out of the three problems. Each block now writes the CPU time
+of the Redis server, taken from \texttt{redis-cli info cpu} at the end of the
+block; since Redis restarts for every block, those counters are that block's
+total rather than a running one. The workload is selectable, so both readings of
+the paper's trial sentence can be measured instead of one being chosen and
+defended. A failed benchmark invocation is retried up to four times, and every
+attempt is written to a per-block log whose count reaches the audit as a warning,
+so a retried block cannot be mistaken for a clean one. Runs start through a
+launcher that puts them in their own session with \code{setsid} and ignores
+\code{SIGHUP}, which removes the failure described above.
+
+The rate extraction now drops the quoted test name before reading the field
+that follows it, which also tolerates the extra latency columns that later
+\code{redis-benchmark} versions emit.
+
+\subsection{Results of the correction run}
+\label{sec:correction-results}
+
+The corrected series ran for 90.7 hours on node85 and produced eight balanced
+pairs: four using the sequential workload of Section~\ref{sec:methodology}, and
+four using the combined \code{EVAL} reading. Every block holds 2000 trials, every
+release-on log confirms the 16~MiB/s rate, no block needed a retry, and the two
+launcher status files record a zero exit code. Of the 32 blocks, 28 re-derive
+byte-identical summaries from their raw per-trial files; the four that differ are
+the block set damaged by the extraction fault, repaired as described above.
+
+\begin{table}[ht]
+\caption{Correction run on node85, sequential workload. Deltas in raw
+throughput and in requests per CPU second, the unit the paper reports. Intervals
+are four-pair Student-t intervals on the log-transformed pair ratios and
+accompany the mean.}
+\label{tab:correction-sequential}
+\footnotesize
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Pair & Order & Release off & Release on \\
+\midrule
+5 & L first & $-0.476\%$ & $+0.242\%$ \\
+6 & T first & $+0.156\%$ & $+0.555\%$ \\
+7 & L first & $-0.083\%$ & $+0.380\%$ \\
+8 & T first & $+0.490\%$ & $+0.426\%$ \\
+\midrule
+Mean            & & $+0.022\%$ & $+0.401\%$ \\
+Median          & & $+0.037\%$ & $+0.403\%$ \\
+95\% interval   & & $[-0.62,+0.67]$ & $[+0.20,+0.61]$ \\
+\midrule
+Mean per CPU second   & & $+0.091\%$ & $+0.474\%$ \\
+95\% interval         & & $[-0.74,+0.93]$ & $[+0.30,+0.65]$ \\
+\midrule
+Paper           & & $+0.75\%$ & $+0.44\%$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Release-on at 16~MiB/s is the result that changes. All four pairs favor
+Temeraire and the mean is $+0.401\%$, with an interval that excludes zero.
+Normalizing for CPU moves the mean to $+0.474\%$, and that interval excludes
+zero as well. The paper's $+0.44\%$ falls inside both. This is the first
+condition in the study that separates from the baseline in Temeraire's favor,
+and it does so in the paper's own unit and within its reported value.
+
+The improvement is in the variance, not the effect. The four pair deltas here
+span $0.31$ percentage points, against $1.68$ for the corresponding pairs in
+Table~\ref{tab:bare-metal-pairs}, and absolute throughput stayed between 982 and
+995~kRPS across all sixteen blocks. Taking the two four-pair samples together,
+seven of eight release-on pairs favor Temeraire.
+
+Release-off tells a different story, and it corrects
+Section~\ref{sec:results} rather than extending it. The mean is $+0.022\%$ and
+the median $+0.037\%$, against a median of $-0.34\%$ in the first native run.
+The two intervals overlap across almost their whole width, so the samples agree
+with each other; what they agree on is that four pairs cannot resolve this
+condition. Section~\ref{sec:results} read its negative aggregate as inconsistent
+with the paper's $+0.75\%$ because the interval excluded that value. The
+normalized interval here, $[-0.74\%,+0.93\%]$, contains it. That earlier reading
+was too strong for the sample behind it, and this report withdraws it.
+
+Normalizing for CPU changes little, and the CPU record explains why. Sequential
+blocks spent about 4040 CPU seconds across roughly 4100 seconds of wall clock,
+and combined blocks 14\,860 across 14\,900, so the Redis process held between
+98 and 99.7 percent of a single core throughout. Redis~6.0.9 executes commands
+on one thread and the benchmark keeps that thread saturated, which makes
+requests per second and requests per second per core nearly the same quantity
+for this workload. The metric gap identified in Section~\ref{sec:methodology} is
+therefore real but small here, worth under a tenth of a percentage point. That
+conclusion is specific to a single-threaded saturated server and should not be
+carried over to the multithreaded applications in the paper's Table~1.
+
+\begin{table}[ht]
+\caption{Correction run on node85, combined \code{EVAL} workload, where one
+request performs the push and the read. Same interval construction as
+Table~\ref{tab:correction-sequential}.}
+\label{tab:correction-combined}
+\footnotesize
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Pair & Order & Release off & Release on \\
+\midrule
+1 & L first & $-0.260\%$ & $-1.121\%$ \\
+2 & T first & $+0.817\%$ & $-0.085\%$ \\
+3 & L first & $+1.287\%$ & $-0.304\%$ \\
+4 & T first & $+0.867\%$ & $+2.506\%$ \\
+\midrule
+Mean          & & $+0.678\%$ & $+0.249\%$ \\
+Median        & & $+0.842\%$ & $-0.194\%$ \\
+95\% interval & & $[-0.37,+1.73]$ & $[-2.21,+2.75]$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The combined reading costs far more and measures far less. A block takes
+4.11~hours against 1.14 for the sequential form, since an \code{EVAL} request
+carries Lua interpreter work that a plain command does not, and its throughput
+sits near 135~kRPS rather than 990. Its release-off median of $+0.842\%$ lands
+near the paper's $+0.75\%$, but with an interval more than two percentage points
+wide that agreement carries little weight. Its release-on column is worse still:
+one pair at $+2.506\%$ drives a positive mean out of three negative pairs, and
+the interval spans five percentage points. CPU normalization shifts these figures
+by less than $0.01$ percentage points, because these blocks are the most
+saturated of the study.
+
+Running both readings was worth the compute even though one of them produced
+nothing usable. It shows that the choice left open by the paper's sentence is not
+a detail: the two implementations differ by a factor of 3.6 in cost and by an
+order of magnitude in the width of the interval they yield. The sequential form
+is the better instrument, and the result in
+Table~\ref{tab:correction-sequential} rests on it.
 
 \section{Conclusion}
 \label{sec:conclusion}
@@ -1049,22 +1172,32 @@ versus Temeraire, with historical TCMalloc builds, wrapper libraries, preload
 checks, compiler metadata, THP controls, and memory instrumentation.
 
 The WSL2 stage produced a working and instrumented experiment, but host drift
-made its release-on sweep unsuitable as final evidence. Repeating the same
-workload on dedicated bare-metal Linux removed those extreme swings and changed
-the interpretation. Release-off has a median of $-0.34\%$ and a mean of
-$-0.28\%$, whose 95\% interval excludes the paper's $+0.75\%$. Release-on at
-16~MiB/s has a median of $+0.55\%$ against the paper's $+0.44\%$, while the
-medians at 64 and 256~MiB/s are $-0.60\%$ and $-0.08\%$.
+made its release-on sweep unsuitable as final evidence. Repeating the workload on
+dedicated bare-metal Linux removed those swings, and a second corrected series,
+run after the metric mismatch came to light, settles the release-on question.
+Across four fresh pairs Temeraire gains $+0.401\%$ in raw throughput and
+$+0.474\%$ in requests per CPU second, with every pair positive and both
+intervals excluding zero while containing the paper's $+0.44\%$. Seven of the
+eight release-on pairs measured on node85 favor Temeraire.
 
-The reproduction therefore lands in the same small positive Redis range under one
-explicit release configuration rather than across the experiment as a whole. It
-does so with a locally reconstructed workload, an unnormalized throughput metric
-where the paper normalizes for CPU, and a processor one generation past the
-Skylake parts the paper names, so the numerical proximity is weaker evidence than
-the figures alone suggest. Its main contribution is the path from an unsuitable
-starting artifact, through build and release-control failures, to a native run
-whose raw data and settings can be audited. Google's fleet-scale claims and the
-production-era environment stay outside its reach.
+Release-off stays unresolved. Two independent four-pair samples put it at
+$-0.34\%$ and $+0.037\%$, with intervals that overlap almost entirely, so the
+condition needs more pairs rather than a firmer conclusion. The earlier reading
+of the negative sample as inconsistent with the paper does not survive the
+second.
+
+The reproduction therefore reaches the paper's release-on Redis result in the
+paper's own unit, and reaches nothing conclusive elsewhere. Two of its three
+known deviations are now measured rather than assumed: CPU normalization is worth
+under a tenth of a percentage point for a single-threaded saturated Redis, while
+the choice between two readings of the paper's trial sentence changes the cost by
+a factor of 3.6 and the interval width by an order of magnitude. The third,
+Skylake against Ice Lake, needs different hardware. Its other contribution is the
+path from an unsuitable starting artifact, through build failures, a
+misconfigured release rate, a signal that killed a run, and a parsing fault that
+silently zeroed a day of measurements, to a series whose raw data, settings, and
+repairs can all be audited. Google's fleet-scale claims and the production-era
+environment stay outside its reach.
 
 \hbadness=10000
 \bibliographystyle{ACM-Reference-Format}

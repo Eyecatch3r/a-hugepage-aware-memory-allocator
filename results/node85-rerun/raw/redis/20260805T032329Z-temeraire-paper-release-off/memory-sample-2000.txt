@@ -1,0 +1,75 @@
+allocator=temeraire
+allocator_note=paper-era public google/tcmalloc build using the hugepage-aware Temeraire path
+run_label=paper-release-off
+timestamp_utc=20260805T043206Z
+pid=1483369
+port=6380
+trials=2000
+requests_per_trial=1000000
+clients=50
+pipeline=16
+numa_node=0
+snapshot_every_trials=250
+workload=sequential
+trial_retries=0
+background_release_enabled=0
+background_release_rate_bps=unset
+build_exact_llvm=0
+llvm_ref_requested=unknown
+
+## status
+VmSize:	   56032 kB
+VmHWM:	   28896 kB
+VmRSS:	   28676 kB
+RssAnon:	   23816 kB
+RssFile:	    4860 kB
+
+## cpu
+clk_tck=100
+proc_utime_ticks=310851
+proc_stime_ticks=96383
+proc_cutime_ticks=0
+proc_cstime_ticks=0
+proc_cpu_seconds=4072.340000
+used_cpu_sys=963.838925
+used_cpu_user=3108.512826
+used_cpu_sys_children=0.000000
+used_cpu_user_children=0.000000
+nproc_online=48
+
+## smaps_rollup
+00400000-7ffd32584000 ---p 00000000 00:00 0                              [rollup]
+Rss:               28676 kB
+Pss:               26690 kB
+Pss_Dirty:         23816 kB
+Pss_Anon:          23816 kB
+Pss_File:           2874 kB
+Pss_Shmem:             0 kB
+Shared_Clean:       2152 kB
+Shared_Dirty:          0 kB
+Private_Clean:      2708 kB
+Private_Dirty:     23816 kB
+Referenced:        28676 kB
+Anonymous:         23816 kB
+KSM:                   0 kB
+LazyFree:              0 kB
+AnonHugePages:     18432 kB
+ShmemPmdMapped:        0 kB
+FilePmdMapped:         0 kB
+Shared_Hugetlb:        0 kB
+Private_Hugetlb:       0 kB
+Swap:                  0 kB
+SwapPss:               0 kB
+Locked:                0 kB
+
+## thp_state
+AnonHugePages:     18432 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+[always] madvise never
+always defer defer+madvise [madvise] never
+511
