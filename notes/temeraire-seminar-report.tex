@@ -140,26 +140,20 @@ approximated with public code: the Redis~6.0.9 case study.
 The artifact evolved from a generic allocator benchmark into a Redis-focused
 reproduction by pinning Redis, selecting a historical public TCMalloc revision,
 building separate legacy and hugepage-aware shared libraries, and checking the
-loaded allocator at runtime. Docker/WSL2 was useful for reaching a working
-experiment, but long release-on runs showed throughput changes much larger than
-the effect in the paper. This prompted a second run on a dedicated bare-metal
-Debian node.
+loaded allocator at runtime. Reaching a trustworthy measurement took two
+environments and two series. Docker/WSL2 drifted by more than 200~kRPS while the
+allocator was held constant, and the first bare-metal series recorded no CPU time
+even though the paper normalizes its throughput for CPU.
 
-The native run removes the extreme WSL2 swings. It gives a median Temeraire
-delta of $-0.34\%$ with release disabled and $+0.55\%$ with release enabled at a
-locally chosen 16~MiB/s, against the paper's $+0.75\%$ and $+0.44\%$, and
-medians of $-0.60\%$ and $-0.08\%$ at 64 and 256~MiB/s. Reading the paper again
-against the harness then exposed a metric mismatch, since the paper normalizes
-throughput for CPU and the artifact did not record CPU time at all, so a
-corrected series was run.
-
-That series reproduces the paper's release-on result. Across four fresh pairs
-the delta is $+0.401\%$ raw and $+0.474\%$ per CPU second, with all four pairs
-positive and 95\% intervals of $[+0.20\%,+0.61\%]$ and $[+0.30\%,+0.65\%]$ that
-exclude zero and contain the paper's $+0.44\%$. Release-off centres on zero and
-stays unresolved at this sample size. Normalization proves to be worth under a
-tenth of a percentage point here, because a single-threaded Redis under a
-saturating benchmark holds one core throughout.
+The corrected series reproduces the paper's release-on result. Across four
+balanced pairs the Temeraire delta is $+0.401\%$ in raw throughput and
+$+0.474\%$ in requests per CPU second. All four pairs are positive, and both
+95\% intervals exclude zero while containing the paper's $+0.44\%$.
+Release-off centres on zero and stays unresolved
+across two independent samples. Normalization proves to be worth under a tenth of
+a percentage point here, because a single-threaded Redis under a saturating
+benchmark holds one core throughout, and the release rate the paper omits matters
+more than the metric: at 64~MiB/s every pair favors the legacy pageheap.
 \end{abstract}
 
 \begin{CCSXML} <ccs2012> <concept>
@@ -605,38 +599,21 @@ can mask the placement signal.
 
 The first complete setup used a Debian~12 container on Docker Desktop and its
 shared WSL2 kernel. It was where the pinned builds, preload checks, benchmark
-parameters, THP instrumentation, and balanced ordering were developed. Once
-THP was set to \code{always}, Redis reported non-zero hugepage use.
+parameters, THP instrumentation, and balanced ordering were developed. Once THP
+was set to \code{always}, Redis reported non-zero hugepage use. The container
+stayed a good development environment and made a poor measuring instrument, for
+reasons Section~
+ef{sec:earlier-series} gives.
 
-The container remained useful as a reproducible development environment, but
-it was a poor endpoint for this particular measurement. Several hour-long
-release-on blocks changed in absolute throughput while the allocator was held
-constant. The largest apparent Temeraire improvements occurred while the host
-was recovering from a slower period. This made the allocator delta inseparable
-from the time at which each block happened.
-
-\subsection{Post-audit correction to release-on}
-
-The initial analysis treated runs labelled \code{paper-release-on} as periodic
-release experiments. A later code audit showed that this label was wrong. The
-runner started TCMalloc's background-actions thread but did not set its
-background release rate. The pinned public TCMalloc revision initializes that
-rate to zero. Its background loop therefore continued per-CPU-cache
-maintenance, but calculated zero bytes for the pageheap release call.
-
-The existing logs remain part of the record, including a $-12.02\%$ run and its
-targeted rerun. They do not measure periodic pageheap release and are excluded
-from paper comparison. The paper does not publish its release rate, so every
-corrected run records the chosen rate as a local experimental parameter.
-
-The correction itself became another part of the reproduction work. The first
-smoke test showed that the wrapper's dynamic symbol lookups had been failing
-silently, so the wrapper was changed to call the linked TCMalloc API directly.
-It also revealed that \code{LD\_PRELOAD} had leaked from the Redis server to
-\code{redis-cli} and \code{redis-benchmark}; the preload is now scoped to the
-server process. Rebuilding required one more Bazel dependency fix, followed by
-Linux line-ending cleanup for the container scripts. Corrected runs were started
-only after both allocator smoke tests logged the requested positive rate.
+Two faults found in that stage shaped everything after it. The runner started
+TCMalloc's background-actions thread without setting a release rate, which the
+pinned revision defaults to zero, so nothing labelled release-on had performed
+periodic release. Fixing that exposed a second fault: the wrapper's dynamic
+symbol lookups had been failing silently, and \code{LD\_PRELOAD} had leaked
+from the Redis server to \code{redis-cli} and \code{redis-benchmark}, mixing
+client and server allocators into the same comparison. The wrapper now calls the
+linked TCMalloc API directly, the preload is scoped to the server, and every
+release-on run must log its requested rate before the benchmark proceeds.
 
 \subsection{Bare-metal Linux stage}
 
@@ -688,62 +665,121 @@ on any mismatch. Both halves of the archive pass.
 \section{Results}
 \label{sec:results}
 
-\subsection{What the WSL2 runs showed}
+\subsection{Why these are the second series of measurements}
+\label{sec:why-rerun}
 
-The WSL2 measurements remain useful because they explain the native rerun. With
-release disabled, five THP-enabled pairs produced a median of $+0.48\%$, close
-to the paper's $+0.75\%$, but individual pairs ranged from $-0.76\%$ to
-$+3.46\%$. The corrected release-on sweep was less credible. Its 16~MiB/s
-median was $-0.21\%$ with one pair at $-7.09\%$; the 64~MiB/s median reached
-$+6.80\%$; and one 256~MiB/s pair reached $+15.73\%$. Absolute throughput
-changed by more than 200~kRPS over the series and later recovered. Those swings
-dwarf the paper's $+0.44\%$ result. The earlier zero-rate run containing the
-$-12.02\%$ value stays in the protocol as a record of the discovered
-misconfiguration and stays out of the comparison.
+The first bare-metal series was complete and audited, and it was measuring the
+wrong thing in ways that only became visible afterwards. Three problems surfaced,
+in an order worth recording, because the last two were faults in the harness that
+produced those very numbers.
 
-The WSL2 stage therefore left an awkward picture: release-off seemed to agree
-with the paper, while the release-on data mainly measured when a block happened
-to run. Moving to node85 tested whether the small positive result would remain
-once the container, WSL2 kernel, and competing desktop load were removed.
+The first came from reading the paper again with the harness open alongside it.
+The caption of Table~1 in Hunter et al.\ says that its throughput is
+``normalized for CPU'', and the surrounding text gives the unit as requests per
+second per core \cite{273711}. The local figure was an unnormalized request
+rate. A ratio of unnormalized rates cannot distinguish Temeraire serving more
+requests from Temeraire serving the same requests at higher CPU cost, and the
+artifact recorded no CPU time at all, so the distinction could not be recovered
+from the archived runs. The same reading showed that the paper's trial, one
+million requests ``to push 5 elements and read those 5 elements'', supports a
+second implementation in which one request performs both operations, and that
+the paper's Redis servers used Skylake Xeons while node85 carries an Ice Lake
+part. Two of those three gaps could be closed by changing the harness. The
+processor could not.
 
-\subsection{Bare-metal main run}
+The second problem appeared eighteen hours into the first corrected attempt. A
+block died at trial 1875 of 2000 with \texttt{Connection reset by peer}, and the
+Redis log for that block showed a clean shutdown, which made the failure look
+like a transient fault on a shared node. It was not. The run had been started
+with a plain background \code{\&} from an interactive shell, so it stayed inside
+the SSH session, and the session had ended. Redis ignores \code{SIGHUP} at
+startup and \code{redis-benchmark} does not, so the hangup killed the client,
+left the server running, and the script's exit trap then shut that server down
+politely. The clean shutdown was the consequence of the failure rather than
+evidence against it.
 
-Table~\ref{tab:bare-metal-pairs} gives the four native pairs. A positive value
-means that Temeraire was faster than the matched legacy run. ``L first'' and
-``T first'' describe the execution order within that pair. The release-on column
-uses the locally chosen rate of 16~MiB/s; release-off applies no rate.
+The third problem destroyed a whole day of compute and was entirely self
+inflicted. \code{redis-benchmark} builds its CSV test name from the command
+line, so a run driven by an \code{EVAL} script carries the whole Lua source in
+that field, commas included. The harness read the rate by splitting the line on
+commas and taking the second field, which for such a run is the fragment
+\code{KEYS[1]}. Every trial of the first sixteen-hour block recorded that string,
+and the block mean came out as zero. Plain \code{LPUSH} and \code{LRANGE} names
+contain no commas, which is why the fault stayed hidden until the second workload
+ran for the first time.
+
+That last one was recoverable, because the runner writes each benchmark
+invocation's output to its own file before deriving anything from it. Those files
+held the correct rates the whole time, and a separate utility re-derives
+\code{trials.csv} and \code{summary.csv} from them, so the sixteen hours were
+repaired rather than repeated. The episode still points at a real weakness in the
+audit: it compares the summary against the aggregated trial table, and both
+descend from the same extraction, so it caught this only because \code{KEYS[1]}
+is not a number. A plausible but wrong value would have passed.
+
+Four changes came out of these problems. Each block now records the CPU time of
+the Redis server from \texttt{redis-cli info cpu}, which is that block's total
+because Redis restarts for every block. The workload is selectable, so both
+readings of the paper's trial sentence can be measured instead of one being
+chosen and defended. A failed benchmark invocation is retried, and every attempt
+reaches the audit as a warning so a retried block cannot pass as a clean one.
+Runs start in their own session through \code{setsid}, which removes the hangup
+described above.
+
+\subsection{Reported result}
+\label{sec:reported-result}
+
+The corrected series ran for 90.7 hours on node85 and produced eight balanced
+pairs: four using the sequential workload of Section~\ref{sec:methodology}, and
+four using the combined \code{EVAL} reading. Every block holds 2000 trials, every
+release-on log confirms the 16~MiB/s rate, no block needed a retry, and the two
+launcher status files record a zero exit code. Of the 32 blocks, 28 re-derive
+byte-identical summaries from their raw per-trial files; the four that differ are
+the block set damaged by the extraction fault, repaired as described above.
 
 \begin{table}[ht]
-\caption{Bare-metal Temeraire throughput deltas. The release-on column uses a
-16~MiB/s background release rate. The interval is a four-pair Student-t interval
-on the log-transformed pair ratios, so it accompanies the mean rather than the
-median. The paper's values use a differently constructed throughput metric.}
-\label{tab:bare-metal-pairs}
+\caption{Reported result. Correction run on node85, sequential workload. Deltas
+in raw throughput and in requests per CPU second, the unit the paper reports.
+Intervals are four-pair Student-t intervals on the log-transformed pair ratios
+and accompany the mean.}
+\label{tab:correction-sequential}
 \footnotesize
-\begin{tabular}{@{}lccc@{}}
+\begin{tabular}{@{}lrrr@{}}
 \toprule
 Pair & Order & Release off & Release on \\
 \midrule
-1 & L first & $+0.241\%$ & $+1.319\%$ \\
-2 & T first & $+0.002\%$ & $+0.149\%$ \\
-3 & L first & $-0.684\%$ & $-0.358\%$ \\
-4 & T first & $-0.686\%$ & $+0.942\%$ \\
+5 & L first & $-0.476\%$ & $+0.242\%$ \\
+6 & T first & $+0.156\%$ & $+0.555\%$ \\
+7 & L first & $-0.083\%$ & $+0.380\%$ \\
+8 & T first & $+0.490\%$ & $+0.426\%$ \\
 \midrule
-Mean   & & $-0.282\%$ & $+0.513\%$ \\
-Median & & $-0.341\%$ & $+0.545\%$ \\
-95\% interval (mean) & & $[-1.04,+0.48]$ & $[-0.69,+1.73]$ \\
-Paper  & & $+0.75\%$  & $+0.44\%$ \\
+Mean            & & $+0.022\%$ & $+0.401\%$ \\
+Median          & & $+0.037\%$ & $+0.403\%$ \\
+95\% interval   & & $[-0.62,+0.67]$ & $[+0.20,+0.61]$ \\
+\midrule
+Mean per CPU second   & & $+0.091\%$ & $+0.474\%$ \\
+95\% interval         & & $[-0.74,+0.93]$ & $[+0.30,+0.65]$ \\
+\midrule
+Paper           & & $+0.75\%$ & $+0.44\%$ \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-Absolute throughput on node85 was stable. All sixteen allocator blocks landed
-between 989 and 1003~kRPS combined, a total spread of about $1.4\%$, against the
-200~kRPS swings recorded under WSL2. The percentage deltas therefore sit on a
-quiet baseline. Figure~\ref{fig:bare-metal-distributions} shows the cost of that
-stability: the per-trial distributions inside each block still span roughly
-$5\%$, so the pairwise means separate distributions that overlap almost
-completely.
+Release-on at 16~MiB/s reproduces the paper. All four pairs favor Temeraire and
+the mean is $+0.401\%$, with an interval that excludes zero. Normalizing for CPU
+moves the mean to $+0.474\%$, and that interval excludes zero as well. The
+paper's $+0.44\%$ falls inside both. This is the only condition in the study that
+separates from the baseline in Temeraire's favor, and it does so in the paper's
+own unit and within its reported value. Absolute throughput held between 980 and
+995~kRPS across all sixteen blocks, a spread of $1.6\%$.
+
+Release-off does not resolve. The mean is $+0.022\%$ and the median $+0.037\%$,
+with an interval that covers zero and, once normalized, covers the paper's
+$+0.75\%$ as well. Figure~\ref{fig:distributions} shows why four pairs are not
+enough here: the per-trial distributions inside each block span roughly $4\%$,
+an order of magnitude wider than the pairwise deltas that separate them, so the
+allocator difference is a small shift between two heavily overlapping
+populations.
 
 \begin{figure}[t]
 \centering
@@ -762,64 +798,65 @@ completely.
 }
 \node[labelbox, rotate=90, anchor=south] at (-0.30,33) {combined kRPS};
 
-% balanced run 3, legacy
-\draw[whisker] (0.870,7.57) -- (0.870,24.83);
-\draw[whisker] (0.870,50.30) -- (0.870,57.39);
-\draw[whisker] (0.780,7.57) -- (0.960,7.57);
-\draw[whisker] (0.780,57.39) -- (0.960,57.39);
-\draw[boxlegacy] (0.650,24.83) rectangle (1.090,50.30);
-\draw[medianline] (0.650,42.59) -- (1.090,42.59);
-% balanced run 3, temeraire
-\draw[whisker] (1.430,11.54) -- (1.430,25.87);
-\draw[whisker] (1.430,49.16) -- (1.430,55.80);
-\draw[whisker] (1.340,11.54) -- (1.520,11.54);
-\draw[whisker] (1.340,55.80) -- (1.520,55.80);
-\draw[boxtemeraire] (1.210,25.87) rectangle (1.650,49.16);
-\draw[medianline] (1.210,43.06) -- (1.650,43.06);
-% balanced run 4, legacy
-\draw[whisker] (2.170,17.10) -- (2.170,33.67);
-\draw[whisker] (2.170,56.92) -- (2.170,63.08);
-\draw[whisker] (2.080,17.10) -- (2.260,17.10);
-\draw[whisker] (2.080,63.08) -- (2.260,63.08);
-\draw[boxlegacy] (1.950,33.67) rectangle (2.390,56.92);
-\draw[medianline] (1.950,51.29) -- (2.390,51.29);
-% balanced run 4, temeraire
-\draw[whisker] (2.730,18.53) -- (2.730,28.80);
-\draw[whisker] (2.730,54.83) -- (2.730,61.11);
-\draw[whisker] (2.640,18.53) -- (2.820,18.53);
-\draw[whisker] (2.640,61.11) -- (2.820,61.11);
-\draw[boxtemeraire] (2.510,28.80) rectangle (2.950,54.83);
-\draw[medianline] (2.510,48.07) -- (2.950,48.07);
-% balanced run 5, legacy
-\draw[whisker] (3.470,14.39) -- (3.470,29.72);
-\draw[whisker] (3.470,49.90) -- (3.470,55.79);
-\draw[whisker] (3.380,14.39) -- (3.560,14.39);
-\draw[whisker] (3.380,55.79) -- (3.560,55.79);
-\draw[boxlegacy] (3.250,29.72) rectangle (3.690,49.90);
-\draw[medianline] (3.250,44.05) -- (3.690,44.05);
-% balanced run 5, temeraire
-\draw[whisker] (4.030,4.33) -- (4.030,21.44);
-\draw[whisker] (4.030,49.25) -- (4.030,55.80);
-\draw[whisker] (3.940,4.33) -- (4.120,4.33);
-\draw[whisker] (3.940,55.80) -- (4.120,55.80);
-\draw[boxtemeraire] (3.810,21.44) rectangle (4.250,49.25);
-\draw[medianline] (3.810,41.64) -- (4.250,41.64);
-% balanced run 6, legacy
-\draw[whisker] (4.770,17.24) -- (4.770,28.68);
-\draw[whisker] (4.770,55.24) -- (4.770,62.00);
-\draw[whisker] (4.680,17.24) -- (4.860,17.24);
-\draw[whisker] (4.680,62.00) -- (4.860,62.00);
-\draw[boxlegacy] (4.550,28.68) rectangle (4.990,55.24);
-\draw[medianline] (4.550,47.72) -- (4.990,47.72);
-% balanced run 6, temeraire
-\draw[whisker] (5.330,7.25) -- (5.330,21.54);
-\draw[whisker] (5.330,50.69) -- (5.330,56.91);
-\draw[whisker] (5.240,7.25) -- (5.420,7.25);
-\draw[whisker] (5.240,56.91) -- (5.420,56.91);
-\draw[boxtemeraire] (5.110,21.54) rectangle (5.550,50.69);
-\draw[medianline] (5.110,42.17) -- (5.550,42.17);
+% pair 5, legacy
+\draw[whisker] (0.870,13.75) -- (0.870,20.58);
+\draw[whisker] (0.870,48.61) -- (0.870,54.27);
+\draw[whisker] (0.780,13.75) -- (0.960,13.75);
+\draw[whisker] (0.780,54.27) -- (0.960,54.27);
+\draw[boxlegacy] (0.650,20.58) rectangle (1.090,48.61);
+\draw[medianline] (0.650,39.02) -- (1.090,39.02);
+% pair 5, temeraire
+\draw[whisker] (1.430,8.10) -- (1.430,18.14);
+\draw[whisker] (1.430,44.70) -- (1.430,52.30);
+\draw[whisker] (1.340,8.10) -- (1.520,8.10);
+\draw[whisker] (1.340,52.30) -- (1.520,52.30);
+\draw[boxtemeraire] (1.210,18.14) rectangle (1.650,44.70);
+\draw[medianline] (1.210,35.06) -- (1.650,35.06);
+% pair 6, legacy
+\draw[whisker] (2.170,10.57) -- (2.170,18.74);
+\draw[whisker] (2.170,42.60) -- (2.170,49.19);
+\draw[whisker] (2.080,10.57) -- (2.260,10.57);
+\draw[whisker] (2.080,49.19) -- (2.260,49.19);
+\draw[boxlegacy] (1.950,18.74) rectangle (2.390,42.60);
+\draw[medianline] (1.950,33.69) -- (2.390,33.69);
+% pair 6, temeraire
+\draw[whisker] (2.730,8.24) -- (2.730,19.56);
+\draw[whisker] (2.730,46.34) -- (2.730,53.24);
+\draw[whisker] (2.640,8.24) -- (2.820,8.24);
+\draw[whisker] (2.640,53.24) -- (2.820,53.24);
+\draw[boxtemeraire] (2.510,19.56) rectangle (2.950,46.34);
+\draw[medianline] (2.510,37.55) -- (2.950,37.55);
+% pair 7, legacy
+\draw[whisker] (3.470,-2.61) -- (3.470,15.75);
+\draw[whisker] (3.470,43.51) -- (3.470,51.69);
+\draw[whisker] (3.380,-2.61) -- (3.560,-2.61);
+\draw[whisker] (3.380,51.69) -- (3.560,51.69);
+\draw[boxlegacy] (3.250,15.75) rectangle (3.690,43.51);
+\draw[medianline] (3.250,32.10) -- (3.690,32.10);
+% pair 7, temeraire
+\draw[whisker] (4.030,4.79) -- (4.030,14.81);
+\draw[whisker] (4.030,38.15) -- (4.030,45.12);
+\draw[whisker] (3.940,4.79) -- (4.120,4.79);
+\draw[whisker] (3.940,45.12) -- (4.120,45.12);
+\draw[boxtemeraire] (3.810,14.81) rectangle (4.250,38.15);
+\draw[medianline] (3.810,29.72) -- (4.250,29.72);
+% pair 8, legacy
+\draw[whisker] (4.770,-34.53) -- (4.770,11.94);
+\draw[whisker] (4.770,40.12) -- (4.770,47.65);
+\draw[whisker] (4.680,-34.53) -- (4.860,-34.53);
+\draw[whisker] (4.680,47.65) -- (4.860,47.65);
+\draw[boxlegacy] (4.550,11.94) rectangle (4.990,40.12);
+\draw[medianline] (4.550,29.97) -- (4.990,29.97);
+% pair 8, temeraire
+\draw[whisker] (5.330,7.58) -- (5.330,16.20);
+\draw[whisker] (5.330,36.57) -- (5.330,43.54);
+\draw[whisker] (5.240,7.58) -- (5.420,7.58);
+\draw[whisker] (5.240,43.54) -- (5.420,43.54);
+\draw[boxtemeraire] (5.110,16.20) rectangle (5.550,36.57);
+\draw[medianline] (5.110,28.28) -- (5.550,28.28);
+% median p05-p95 spread: 4.3%
 
-\foreach \x/\label in {1.15/1, 2.45/2, 3.75/3, 5.05/4} {
+\foreach \x/\label in {1.15/5, 2.45/6, 3.75/7, 5.05/8} {
   \node[labelbox] at (\x,-7) {Pair \label};
 }
 
@@ -831,53 +868,84 @@ completely.
 \node[labelbox, anchor=west] at (3.55,-16) {Temeraire};
 
 \end{tikzpicture}
-\caption{Per-trial combined throughput for the four release-off pairs on node85.
-Boxes span the interquartile range, whiskers the 5th to 95th percentile, and the
-heavy line the median of 2000 trials. Within-block spread is roughly $5\%$, an
-order of magnitude wider than the pairwise deltas in
-Table~\ref{tab:bare-metal-pairs}.}
+\caption{Per-trial combined throughput for the four release-off pairs of the
+correction run. Boxes span the interquartile range, whiskers the 5th to 95th
+percentile, and the heavy line the median of 2000 trials. The within-block spread
+is roughly $4\%$, an order of magnitude wider than the pairwise deltas in
+Table~\ref{tab:correction-sequential}.}
 \Description{Eight box-and-whisker plots, one legacy and one Temeraire block for
 each of four matched pairs, showing heavily overlapping throughput
 distributions.}
-\label{fig:bare-metal-distributions}
+\label{fig:distributions}
 \end{figure}
 
-Every interval in this section is a Student-t interval computed on the
-log-transformed pair ratios, using the four complete pairs as the replication
-unit. It therefore describes the central tendency of the pair effects, not the
-median reported beside it; for these data the two centres differ by less than
-$0.01$ percentage points.
+Normalizing for CPU changes little, and the CPU record explains why. Sequential
+blocks spent about 4040 CPU seconds across roughly 4100 seconds of wall clock,
+and combined blocks 14\,860 across 14\,900, so the Redis process held between 98
+and 99.7 percent of a single core throughout. Redis~6.0.9 executes commands on
+one thread and the benchmark keeps that thread saturated, which makes requests
+per second and requests per second per core nearly the same quantity for this
+workload. The metric gap identified in Section~\ref{sec:methodology} is therefore
+real but small here, worth under a tenth of a percentage point. That conclusion
+is specific to a single-threaded saturated server and should not be carried over
+to the multithreaded applications in the paper's Table~1.
 
-The release-off result no longer supports the positive WSL2 median. Two pairs
-are effectively neutral or slightly positive and two are negative, giving a
-median of $-0.34\%$, a mean of $-0.28\%$, and an interval of
-$[-1.04\%,+0.48\%]$, which does not reach the paper's $+0.75\%$. A second
-four-pair sample in Section~\ref{sec:correction-results} centres on zero instead,
-and its interval does contain that value, so this run should be read as one
-sample of a condition that four pairs cannot resolve.
-
-Release-on at 16~MiB/s points the other way. Three of four pairs favor
-Temeraire, with a mean of $+0.51\%$ and a median of $+0.55\%$, both numerically
-near the paper's $+0.44\%$. Three limits keep that from being a reproduction of
-the paper's value. The interval, $[-0.69\%,+1.73\%]$, rests on four pairs and
-covers zero. The 2000 sequential trials inside one allocator block are
-autocorrelated and count as one replication rather than 2000. And the two numbers
-being compared are built differently, as
-Section~\ref{sec:methodology} sets out.
-
-\subsection{Bare-metal release-rate sensitivity}
-
-The 16~MiB/s release-on column in Table~\ref{tab:bare-metal-pairs} uses a rate
-that the paper never specified. Table~\ref{tab:bare-metal-sensitivity} checks
-whether its positive result survives at two higher rates. Its first row repeats
-the release-on column of Table~\ref{tab:bare-metal-pairs} for comparison; the
-other two rows are additional runs.
+\subsection{The second reading of the workload}
 
 \begin{table}[ht]
-\caption{Bare-metal release-on sensitivity. Each cell compares Temeraire with
-the matched legacy block; the four pairs alternate allocator order. The
-16~MiB/s row repeats Table~\ref{tab:bare-metal-pairs}.}
-\label{tab:bare-metal-sensitivity}
+\caption{Correction run on node85, combined \code{EVAL} workload, where one
+request performs the push and the read. Same interval construction as
+Table~\ref{tab:correction-sequential}.}
+\label{tab:correction-combined}
+\footnotesize
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+Pair & Order & Release off & Release on \\
+\midrule
+1 & L first & $-0.260\%$ & $-1.121\%$ \\
+2 & T first & $+0.817\%$ & $-0.085\%$ \\
+3 & L first & $+1.287\%$ & $-0.304\%$ \\
+4 & T first & $+0.867\%$ & $+2.506\%$ \\
+\midrule
+Mean          & & $+0.678\%$ & $+0.249\%$ \\
+Median        & & $+0.842\%$ & $-0.194\%$ \\
+95\% interval & & $[-0.37,+1.73]$ & $[-2.21,+2.75]$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The combined reading costs far more and measures far less. A block takes
+4.11~hours against 1.14 for the sequential form, since an \code{EVAL} request
+carries Lua interpreter work that a plain command does not, and its throughput
+sits near 135~kRPS rather than 990. Its release-off median of $+0.842\%$ lands
+near the paper's $+0.75\%$, but with an interval more than two percentage points
+wide that agreement carries little weight. Its release-on column is worse still:
+one pair at $+2.506\%$ drives a positive mean out of three negative pairs, and
+the interval spans five percentage points. CPU normalization shifts these figures
+by less than $0.01$ percentage points, because these blocks are the most
+saturated of the study.
+
+Running both readings was worth the compute even though one of them produced
+nothing usable. The choice the paper's sentence leaves open is not a detail: the
+two implementations differ by a factor of 3.6 in cost and by an order of
+magnitude in the width of the interval they yield. The sequential form is the
+better instrument, and Table~\ref{tab:correction-sequential} rests on it.
+
+\subsection{Release-rate sensitivity}
+\label{sec:sensitivity}
+
+The 16~MiB/s rate is a local parameter, since the paper never states one. The
+correction run measured only that rate, so the evidence on higher rates comes
+from the earlier series of July 2026, which used the same node, workload, and
+pair structure but recorded no CPU time. Its figures are therefore unnormalized,
+and Section~\ref{sec:reported-result} shows that for this workload the
+normalization would move them by under a tenth of a percentage point.
+
+\begin{table}[ht]
+\caption{Release-on sensitivity from the earlier series. Each cell compares
+Temeraire with the matched legacy block, and the four pairs alternate allocator
+order. Unnormalized throughput.}
+\label{tab:sensitivity}
 \footnotesize
 \begin{tabular}{@{}lrrrrrr@{}}
 \toprule
@@ -891,22 +959,43 @@ Rate & Pair 1 & Pair 2 & Pair 3 & Pair 4 & Mean & Median \\
 \end{table}
 
 All four 64~MiB/s pairs favor legacy TCMalloc, and their interval,
-$[-0.92\%,-0.07\%]$, excludes zero. It is the only condition here whose
-unadjusted interval does so, which is worth recording but is weak evidence on its
-own: it rests on four pairs, on a normal approximation, and on one condition
-picked out of the four tested without any correction for multiple comparisons. At
-256~MiB/s three pairs are negative and one is positive; the $-1.419\%$ pair
-drives the negative mean, and its interval, $[-1.54\%,+0.96\%]$, is
-uninformative. Inspection by trial quarter rules out a
-short collapse in that block, with Temeraire between $1.2\%$ and $1.8\%$ slower
-in each quarter. The sequence is not monotonic: performance changes sign between
-16 and 64~MiB/s, then moves back toward zero at 256~MiB/s.
+$[-0.92\%,-0.07\%]$, excludes zero. It is the only interval here that does so,
+which is worth recording but is weak evidence on its own: it rests on four
+pairs, on a normal approximation, and on one condition picked out of several
+tested without any correction for multiple comparisons. At 256~MiB/s three pairs
+are negative and one is positive; the $-1.419\%$ pair drives the negative mean,
+and inspection by trial quarter rules out a short collapse in that block, with
+Temeraire between $1.2\%$ and $1.8\%$ slower in each quarter. The sequence is not
+monotonic: performance changes sign between 16 and 64~MiB/s, then moves back
+toward zero at 256~MiB/s. Whatever the release rate does to this workload, it
+does not do it smoothly.
 
-The dedicated node removes the double-digit changes seen under WSL2 and replaces
-one allocator verdict with three, each tied to a configuration. Release-off is
-slightly negative, release-on at 16~MiB/s lands near the paper's value, and the
-two higher-rate aggregates are negative. For release-on the result depends on a
-parameter the paper omits.
+\subsection{What the earlier series established}
+\label{sec:earlier-series}
+
+Two findings from the earlier work survive as evidence rather than as results.
+
+The Docker/WSL2 stage produced a working and fully instrumented experiment whose
+measurements could not carry a sub-one-percent claim. Absolute throughput moved
+by more than 200~kRPS across a single series and later recovered. Each allocator
+block ran for about an hour, so a block inherited whatever the host happened to
+be doing at the time. Its release-on median reached $+6.80\%$ at
+64~MiB/s, and one 256~MiB/s pair reached $+15.73\%$, both an order of magnitude
+larger than the effect under study. A later audit then found that no run in that stage
+had performed periodic release at all: the runner started TCMalloc's
+background-actions thread without setting a release rate, and the pinned revision
+defaults that rate to zero, so the thread continued its per-CPU-cache work and
+calculated zero bytes for every pageheap release call. Those logs are retained as
+a record of the misconfiguration and excluded from every comparison.
+
+The first bare-metal series, run in July on the same node, remains useful as a
+second sample of release-off. It gave a median of $-0.34\%$ where the correction
+run gives $+0.037\%$, with intervals that overlap across almost their whole
+width. Two independent four-pair samples that disagree in sign while agreeing
+within their intervals are the clearest available statement that this condition
+needs more pairs, not a firmer conclusion. Its release-on pairs point the same
+way as the correction run, so seven of the eight release-on pairs measured on
+node85 favor Temeraire.
 
 \section{Discussion and Related Work}
 \label{sec:discussion-related}
@@ -921,20 +1010,19 @@ release-on deltas did not recur on node85, where every pair stays within
 $1.5\%$, so they were environment- or time-dependent rather than a repeatable
 property of Temeraire. The rerun cannot go further than that: it changed CPU
 generation, kernel, operating system, execution environment, and time period
-together, so it isolates none of them as the cause. The move also weakens the
-earlier release-off story, turning a positive WSL2 median into a negative native
-median. Whatever differs between the two settings is large enough to change the
-sign of the reported effect, which is the more important point for anyone reading
-either number.
+together, so it isolates none of them as the cause.
 
-The release-on agreement at 16~MiB/s is encouraging but conditional. Since the
-paper omits its rate, 16~MiB/s has no claim to being the paper's setting, and the
-negative 64 and 256~MiB/s aggregates confine the numerical agreement to that one
-value. These data support a narrower claim: the public reconstruction lands in the
-paper's small positive range under one recorded configuration.
+Reproducing the paper's release-on value is not the same as confirming the
+paper's claim, and the difference is the release rate. Since the paper omits its
+rate, 16~MiB/s has no claim to being the setting behind $+0.44\%$, and the
+64~MiB/s aggregate runs the other way with an interval that also excludes zero.
+An effect that reverses between two rates the paper never distinguishes is a
+weaker thing than a $+0.44\%$ headline suggests, and the sensitivity in
+Table~\ref{tab:sensitivity} is the part of this study a reader should weigh
+against it.
 
-Two measurement gaps limited how far these comparisons could be pushed, and the
-correction run in Section~\ref{sec:correction} measured the size of both. The
+Two measurement gaps limited how far these comparisons could be pushed, and
+Section~\ref{sec:reported-result} measured the size of both. The
 paper normalizes Redis throughput for CPU and reports requests per second per
 core, while the local figure is an unnormalized request rate joined across two
 operations by a harmonic mean this report chose. That gap turns out to be worth
@@ -975,192 +1063,6 @@ without profiling \cite{10.1145/3373376.3378525}. Kernel-level systems such as
 Ingens and HawkEye manage huge pages from the OS side and are complementary to
 allocator-side placement
 \cite{10.5555/3026877.3026931,10.1145/3297858.3304064}.
-
-\section{Correction Run}
-\label{sec:correction}
-
-\subsection{Why the measurements were repeated}
-\label{sec:why-rerun}
-
-The results in Section~\ref{sec:results} were complete, audited, and wrong in
-ways that only became visible afterwards. Three problems surfaced, in an order
-worth recording, because the last two were faults in the harness that produced
-those very numbers.
-
-The first came from reading the paper again with the harness open alongside it.
-The caption of Table~1 in Hunter et al.\ says that its throughput is
-``normalized for CPU'', and the surrounding text gives the unit as requests per
-second per core \cite{273711}. The local figure was an unnormalized request
-rate. A ratio of unnormalized rates cannot distinguish Temeraire serving more
-requests from Temeraire serving the same requests at higher CPU cost, and the
-artifact recorded no CPU time at all, so the distinction could not be recovered
-from the archived runs. The same reading showed that the paper's trial, one
-million requests ``to push 5 elements and read those 5 elements'', supports a
-second implementation in which one request performs both operations, and that
-the paper's Redis servers used Skylake Xeons while node85 carries an Ice Lake
-part. Two of those three gaps could be closed by changing the harness. The
-processor could not.
-
-The second problem appeared eighteen hours into the first attempt at a corrected
-run. A block died at trial 1875 of 2000 with \texttt{Connection reset by peer},
-and the Redis log for that block showed a clean shutdown, which made the failure
-look like a transient fault on a shared node. It was not. The run had been
-started with a plain background \code{\&} from an interactive shell, so it stayed
-inside the SSH session, and the session had ended. Redis ignores \code{SIGHUP}
-at startup and \code{redis-benchmark} does not, so the hangup killed the client,
-left the server running, and the script's exit trap then shut that server down
-politely. The clean shutdown was the consequence of the failure rather than
-evidence against it. An hour of completed trials went in the bin for a signal
-that had nothing to do with the allocator.
-
-The third problem destroyed a whole day of compute and was entirely self
-inflicted. \code{redis-benchmark} builds its CSV test name from the command
-line, so a run driven by an \code{EVAL} script carries the whole Lua source in
-that field, commas included. The harness read the rate by splitting the line on
-commas and taking the second field, which for such a run is the fragment
-\code{KEYS[1]}. Every trial of the first sixteen-hour block recorded that string,
-and the block mean came out as zero. Plain \code{LPUSH} and \code{LRANGE} names
-contain no commas, which is why the fault stayed hidden until the second workload
-ran for the first time.
-
-That last one was recoverable, because the runner writes each benchmark
-invocation's output to its own file before deriving anything from it. Those files
-held the correct rates the whole time. A separate utility re-derives
-\code{trials.csv} and \code{summary.csv} from them, so the sixteen hours were
-repaired rather than repeated. The episode still points at a real weakness in
-the audit: it compares the summary against the aggregated trial table, and both
-descend from the same extraction, so it caught this only because
-\code{KEYS[1]} is not a number. A plausible but wrong value would have passed.
-
-\subsection{What the harness now records}
-
-Four changes came out of the three problems. Each block now writes the CPU time
-of the Redis server, taken from \texttt{redis-cli info cpu} at the end of the
-block; since Redis restarts for every block, those counters are that block's
-total rather than a running one. The workload is selectable, so both readings of
-the paper's trial sentence can be measured instead of one being chosen and
-defended. A failed benchmark invocation is retried up to four times, and every
-attempt is written to a per-block log whose count reaches the audit as a warning,
-so a retried block cannot be mistaken for a clean one. Runs start through a
-launcher that puts them in their own session with \code{setsid} and ignores
-\code{SIGHUP}, which removes the failure described above.
-
-The rate extraction now drops the quoted test name before reading the field
-that follows it, which also tolerates the extra latency columns that later
-\code{redis-benchmark} versions emit.
-
-\subsection{Results of the correction run}
-\label{sec:correction-results}
-
-The corrected series ran for 90.7 hours on node85 and produced eight balanced
-pairs: four using the sequential workload of Section~\ref{sec:methodology}, and
-four using the combined \code{EVAL} reading. Every block holds 2000 trials, every
-release-on log confirms the 16~MiB/s rate, no block needed a retry, and the two
-launcher status files record a zero exit code. Of the 32 blocks, 28 re-derive
-byte-identical summaries from their raw per-trial files; the four that differ are
-the block set damaged by the extraction fault, repaired as described above.
-
-\begin{table}[ht]
-\caption{Correction run on node85, sequential workload. Deltas in raw
-throughput and in requests per CPU second, the unit the paper reports. Intervals
-are four-pair Student-t intervals on the log-transformed pair ratios and
-accompany the mean.}
-\label{tab:correction-sequential}
-\footnotesize
-\begin{tabular}{@{}lrrr@{}}
-\toprule
-Pair & Order & Release off & Release on \\
-\midrule
-5 & L first & $-0.476\%$ & $+0.242\%$ \\
-6 & T first & $+0.156\%$ & $+0.555\%$ \\
-7 & L first & $-0.083\%$ & $+0.380\%$ \\
-8 & T first & $+0.490\%$ & $+0.426\%$ \\
-\midrule
-Mean            & & $+0.022\%$ & $+0.401\%$ \\
-Median          & & $+0.037\%$ & $+0.403\%$ \\
-95\% interval   & & $[-0.62,+0.67]$ & $[+0.20,+0.61]$ \\
-\midrule
-Mean per CPU second   & & $+0.091\%$ & $+0.474\%$ \\
-95\% interval         & & $[-0.74,+0.93]$ & $[+0.30,+0.65]$ \\
-\midrule
-Paper           & & $+0.75\%$ & $+0.44\%$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-Release-on at 16~MiB/s is the result that changes. All four pairs favor
-Temeraire and the mean is $+0.401\%$, with an interval that excludes zero.
-Normalizing for CPU moves the mean to $+0.474\%$, and that interval excludes
-zero as well. The paper's $+0.44\%$ falls inside both. This is the first
-condition in the study that separates from the baseline in Temeraire's favor,
-and it does so in the paper's own unit and within its reported value.
-
-The improvement is in the variance, not the effect. The four pair deltas here
-span $0.31$ percentage points, against $1.68$ for the corresponding pairs in
-Table~\ref{tab:bare-metal-pairs}, and absolute throughput stayed between 982 and
-995~kRPS across all sixteen blocks. Taking the two four-pair samples together,
-seven of eight release-on pairs favor Temeraire.
-
-Release-off tells a different story, and it corrects
-Section~\ref{sec:results} rather than extending it. The mean is $+0.022\%$ and
-the median $+0.037\%$, against a median of $-0.34\%$ in the first native run.
-The two intervals overlap across almost their whole width, so the samples agree
-with each other; what they agree on is that four pairs cannot resolve this
-condition. Section~\ref{sec:results} read its negative aggregate as inconsistent
-with the paper's $+0.75\%$ because the interval excluded that value. The
-normalized interval here, $[-0.74\%,+0.93\%]$, contains it. That earlier reading
-was too strong for the sample behind it, and this report withdraws it.
-
-Normalizing for CPU changes little, and the CPU record explains why. Sequential
-blocks spent about 4040 CPU seconds across roughly 4100 seconds of wall clock,
-and combined blocks 14\,860 across 14\,900, so the Redis process held between
-98 and 99.7 percent of a single core throughout. Redis~6.0.9 executes commands
-on one thread and the benchmark keeps that thread saturated, which makes
-requests per second and requests per second per core nearly the same quantity
-for this workload. The metric gap identified in Section~\ref{sec:methodology} is
-therefore real but small here, worth under a tenth of a percentage point. That
-conclusion is specific to a single-threaded saturated server and should not be
-carried over to the multithreaded applications in the paper's Table~1.
-
-\begin{table}[ht]
-\caption{Correction run on node85, combined \code{EVAL} workload, where one
-request performs the push and the read. Same interval construction as
-Table~\ref{tab:correction-sequential}.}
-\label{tab:correction-combined}
-\footnotesize
-\begin{tabular}{@{}lrrr@{}}
-\toprule
-Pair & Order & Release off & Release on \\
-\midrule
-1 & L first & $-0.260\%$ & $-1.121\%$ \\
-2 & T first & $+0.817\%$ & $-0.085\%$ \\
-3 & L first & $+1.287\%$ & $-0.304\%$ \\
-4 & T first & $+0.867\%$ & $+2.506\%$ \\
-\midrule
-Mean          & & $+0.678\%$ & $+0.249\%$ \\
-Median        & & $+0.842\%$ & $-0.194\%$ \\
-95\% interval & & $[-0.37,+1.73]$ & $[-2.21,+2.75]$ \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-The combined reading costs far more and measures far less. A block takes
-4.11~hours against 1.14 for the sequential form, since an \code{EVAL} request
-carries Lua interpreter work that a plain command does not, and its throughput
-sits near 135~kRPS rather than 990. Its release-off median of $+0.842\%$ lands
-near the paper's $+0.75\%$, but with an interval more than two percentage points
-wide that agreement carries little weight. Its release-on column is worse still:
-one pair at $+2.506\%$ drives a positive mean out of three negative pairs, and
-the interval spans five percentage points. CPU normalization shifts these figures
-by less than $0.01$ percentage points, because these blocks are the most
-saturated of the study.
-
-Running both readings was worth the compute even though one of them produced
-nothing usable. It shows that the choice left open by the paper's sentence is not
-a detail: the two implementations differ by a factor of 3.6 in cost and by an
-order of magnitude in the width of the interval they yield. The sequential form
-is the better instrument, and the result in
-Table~\ref{tab:correction-sequential} rests on it.
 
 \section{Conclusion}
 \label{sec:conclusion}
