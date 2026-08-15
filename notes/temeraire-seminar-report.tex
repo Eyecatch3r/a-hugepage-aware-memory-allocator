@@ -608,12 +608,20 @@ ef{sec:earlier-series} gives.
 Two faults found in that stage shaped everything after it. The runner started
 TCMalloc's background-actions thread without setting a release rate, which the
 pinned revision defaults to zero, so nothing labelled release-on had performed
-periodic release. Fixing that exposed a second fault: the wrapper's dynamic
-symbol lookups had been failing silently, and \code{LD\_PRELOAD} had leaked
-from the Redis server to \code{redis-cli} and \code{redis-benchmark}, mixing
-client and server allocators into the same comparison. The wrapper now calls the
-linked TCMalloc API directly, the preload is scoped to the server, and every
-release-on run must log its requested rate before the benchmark proceeds.
+periodic release. The label had been wrong for the whole series. Fixing it
+exposed a second fault: the wrapper's dynamic symbol lookups had been failing
+silently, and \code{LD\_PRELOAD} had leaked from the Redis server to
+\code{redis-cli} and \code{redis-benchmark}, mixing client and server allocators
+into the same comparison. The wrapper now calls the linked TCMalloc API directly,
+the preload is scoped to the server, and every release-on run must log its
+requested rate before the benchmark proceeds.
+
+Neither fix was the end of it. Rebuilding the wrapper needed one further Bazel
+dependency, and the container scripts still carried Windows line endings, which
+Linux reports as a missing \texttt{bash\textbackslash r} interpreter rather than
+as a line-ending problem. Both cost more time than the allocator change they were
+meant to enable, which is the ordinary shape of this work: the substantive edit is
+small and the environment around it is not.
 
 \subsection{Bare-metal Linux stage}
 
@@ -717,8 +725,16 @@ audit: it compares the summary against the aggregated trial table, and both
 descend from the same extraction, so it caught this only because \code{KEYS[1]}
 is not a number. A plausible but wrong value would have passed.
 
-Four changes came out of these problems. Each block now records the CPU time of
-the Redis server from \texttt{redis-cli info cpu}, which is that block's total
+This section records the faults that changed a result or a method. The artifact
+also carries a longer protocol note that logs every dead end in order, including
+the ones that cost time without changing a number: the modern TCMalloc checkout
+that would not wrap, the external Bazel workspace that inherited no Abseil
+dependency, the target visibility that forced the wrapper into
+\code{tcmalloc/testing}, and the LLVM bootstrap that needed
+\texttt{-include cstdint} to build under a newer host compiler.
+
+Four changes came out of the problems above. Each block now records the CPU time
+of the Redis server from \texttt{redis-cli info cpu}, which is that block's total
 because Redis restarts for every block. The workload is selectable, so both
 readings of the paper's trial sentence can be measured instead of one being
 chosen and defended. A failed benchmark invocation is retried, and every attempt
@@ -979,8 +995,13 @@ The Docker/WSL2 stage produced a working and fully instrumented experiment whose
 measurements could not carry a sub-one-percent claim. Absolute throughput moved
 by more than 200~kRPS across a single series and later recovered. Each allocator
 block ran for about an hour, so a block inherited whatever the host happened to
-be doing at the time. Its release-on median reached $+6.80\%$ at
-64~MiB/s, and one 256~MiB/s pair reached $+15.73\%$, both an order of magnitude
+be doing at the time, and the largest apparent Temeraire improvements turned out
+to fall in the blocks that ran while the host was recovering from a slower
+period. That correlation is what makes the numbers uninterpretable rather than
+merely noisy: the allocator delta cannot be separated from the hour in which each
+block happened to run. Its release-on median reached $+6.80\%$ at 64~MiB/s, one
+256~MiB/s pair reached $+15.73\%$, and one release-on pair reached $-12.02\%$ and
+did not reproduce when rerun on its own. All three are an order of magnitude
 larger than the effect under study. A later audit then found that no run in that stage
 had performed periodic release at all: the runner started TCMalloc's
 background-actions thread without setting a release rate, and the pinned revision
