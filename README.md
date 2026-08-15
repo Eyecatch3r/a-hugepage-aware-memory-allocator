@@ -22,8 +22,9 @@ This artifact compares historical public TCMalloc with the legacy pageheap again
 ├── plots/
 │   └── generated/
 ├── results/
-│   ├── node85-import/                  # bare-metal main run, 4 balanced pairs
-│   ├── node85-sensitivity-audit/       # bare-metal main run plus 2 extra rates
+│   ├── node85-import/                  # July run, 4 balanced pairs
+│   ├── node85-sensitivity-audit/       # July run plus 2 extra release rates
+│   ├── node85-rerun/                   # August correction run, both workloads
 │   ├── processed/
 │   └── raw/                            # Docker/WSL runs
 ├── scripts/
@@ -73,6 +74,7 @@ result archives:
 |---|---|
 | `temeraire-node85-results.tar.gz` | Main run: 4 balanced pairs at 16 MiB/s |
 | `temeraire-node85-results-with-sensitivity.tar.gz` | Main run plus 4 pairs at 64 MiB/s and 4 pairs at 256 MiB/s |
+| `temeraire-correction-runs-202608.tar.gz` | Correction run: 4 sequential pairs and 4 EVAL pairs, with CPU time |
 
 Both archives are large. Publish them with a release. Do not add them to Git.
 Each `.sha256` file records the path on the node where the archive was made. Do
@@ -88,11 +90,18 @@ trials, so these blocks stay out of all results.
 
 ## Interactive Results Explorer
 
-The static site in `site/` shows the historical matched runs, trial
-distributions, process-memory snapshots, and background-release-rate
-sensitivity results. Use the Test environment control to select the native
-node85 results or the WSL/Docker results. The site has no runtime dependencies
-or network requests.
+The static site in `site/` shows the matched runs, trial distributions,
+process-memory snapshots, and background-release-rate sensitivity results. Use
+the Test environment control to select one of four result sets:
+
+| Environment | Contents |
+|---|---|
+| Correction run | node85, August 2026, sequential workload. The reported result. Shows the delta per CPU second. |
+| Correction run, EVAL | node85, August 2026, one request pushes and reads. One metric only, because this workload records one rate per trial. |
+| First bare metal run | node85, July 2026. No CPU record. |
+| WSL / Docker | Container runs. Superseded. |
+
+The site has no runtime dependencies and makes no network requests.
 
 Open `site/index.html` directly, or serve it locally:
 

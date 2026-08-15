@@ -126,19 +126,53 @@ class StaticSiteContractTests(unittest.TestCase):
         payload = read_data_bundle()
         environments = payload["environments"]
 
-        self.assertEqual(payload["schemaVersion"], 2)
-        self.assertEqual(payload["defaultEnvironment"], "baremetal")
-        self.assertEqual(set(environments), {"baremetal", "wslDocker"})
+        self.assertEqual(payload["schemaVersion"], 3)
+        self.assertEqual(payload["defaultEnvironment"], "correctionSequential")
+        self.assertEqual(
+            set(environments),
+            {"correctionSequential", "correctionCombined", "baremetal", "wslDocker"},
+        )
+        self.assertEqual(len(environments["correctionSequential"]["historical"]), 8)
+        self.assertEqual(len(environments["correctionCombined"]["historical"]), 8)
         self.assertEqual(len(environments["baremetal"]["historical"]), 8)
         self.assertEqual(len(environments["wslDocker"]["historical"]), 11)
-        for environment in environments.values():
-            historical = environment["historical"]
-            sensitivity = environment["releaseSensitivity"]
+
+        # Only the July and WSL runs carry a release-rate sweep.
+        for name in ("baremetal", "wslDocker"):
+            sensitivity = environments[name]["releaseSensitivity"]
             self.assertEqual(len(sensitivity), 12)
             self.assertEqual({record["rateMiB"] for record in sensitivity}, {16, 64, 256})
+
+        for environment in environments.values():
+            historical = environment["historical"]
             self.assertTrue(all(pair["legacy"]["distributions"] for pair in historical))
             self.assertTrue(all(pair["legacy"]["memory"] for pair in historical))
             self.assertTrue(all(pair["legacy"]["distributionSampleSize"] <= 128 for pair in historical))
+
+    def test_only_the_correction_run_reports_the_papers_cpu_unit(self) -> None:
+        environments = read_data_bundle()["environments"]
+
+        for name in ("correctionSequential", "correctionCombined"):
+            pairs = environments[name]["historical"]
+            self.assertTrue(environments[name]["hasCpuRecord"])
+            self.assertTrue(all(isinstance(pair["deltaPerCpuSecond"], (int, float)) for pair in pairs))
+            self.assertTrue(all(pair["legacy"]["cpuSeconds"] for pair in pairs))
+
+        for name in ("baremetal", "wslDocker"):
+            pairs = environments[name]["historical"]
+            self.assertFalse(environments[name]["hasCpuRecord"])
+            self.assertTrue(all(pair["legacy"]["cpuSeconds"] is None for pair in pairs))
+
+    def test_the_combined_workload_offers_no_per_operation_metrics(self) -> None:
+        environments = read_data_bundle()["environments"]
+
+        self.assertEqual(environments["correctionCombined"]["metrics"], ["combined"])
+        for pair in environments["correctionCombined"]["historical"]:
+            self.assertEqual(set(pair["deltaPercent"]), {"combined"})
+            self.assertEqual(pair["legacy"]["workload"], "combined")
+        self.assertEqual(
+            environments["correctionSequential"]["metrics"], ["combined", "lpush", "lrange"]
+        )
 
     def test_known_outlier_remains_explicit_in_the_bundle(self) -> None:
         historical = read_data_bundle()["environments"]["wslDocker"]["historical"]
