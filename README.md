@@ -32,6 +32,7 @@ This artifact compares historical public TCMalloc with the legacy pageheap again
 │   ├── aggregate_paper_closer_results.py
 │   ├── audit_bare_metal_results.py
 │   ├── build_results_site.py
+│   ├── trial_bundles.py
 │   ├── check_allocator_preload.sh
 │   ├── collect_system_info.sh
 │   ├── collect_bare_metal_system_info.sh
@@ -72,10 +73,23 @@ node tests/site_model.test.cjs
 
 ### Result data and archives
 
-Git holds every artifact of every run, including the 496,584 per-trial CSV
-files. They are 52 bytes each and 24 MB in total, so the repository carries them
-rather than splitting the record across a repository and a download. Cloning
-takes a few minutes because of the file count, not the size.
+Git holds every artifact of every run, including all 496,584 per-trial CSV files.
+They travel as one `trial-outputs.tar.gz` per block, 182 bundles and 14 MB in
+total, because half a million loose files of 52 bytes each would push a clone
+past four minutes for 24 MB of content.
+
+You do not unpack them yourself. The audit, the summary rebuilder, and the site
+build call `trial_bundles.ensure_extracted` before they read, which unpacks a
+block only when its loose files are absent. The first command that touches a
+block pays for that block once, and later runs find the files already there. A
+clone therefore takes seconds and still runs every check in full.
+
+To pack, unpack, or check bundles by hand:
+
+```bash
+python3 scripts/trial_bundles.py --unpack results/node85-rerun/raw
+python3 scripts/trial_bundles.py --verify results/node85-rerun/raw
+```
 
 The `archives/` directory holds the same data as four tarballs, which is the
 convenient form for copying a single run to another machine:
@@ -98,9 +112,10 @@ cd archives && sha256sum -c SHA256SUMS.txt
 and `--checksum`, and it reads the hash value directly, so it works even if the
 checksum file records an absolute path from the machine that made it.
 
-A clone can therefore run every check in full. `--skip-raw-files` remains
-available for a sparse or partial checkout, where it recomputes each block mean
-from `trials.csv` and skips only the count of raw files behind that mean.
+A clone runs every check in full, including the count of per-trial files behind
+each block mean. `--skip-raw-files` remains available for a sparse or partial
+checkout, where it recomputes the block means from `trials.csv` and skips that
+one count.
 
 Two early two-trial smoke runs in the sensitivity archive have a broken
 `summary.csv` in each of their eight blocks. The German numeric locale wrote
