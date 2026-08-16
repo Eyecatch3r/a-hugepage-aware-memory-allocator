@@ -1,0 +1,1 @@
+"eval redis.call('LPUSH', KEYS[1], 'v1', 'v2', 'v3', 'v4', 'v5'); return redis.call('LRANGE', KEYS[1], 0, 4) 1 benchmark:list","129470.74"

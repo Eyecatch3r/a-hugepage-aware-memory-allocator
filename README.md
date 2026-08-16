@@ -72,10 +72,13 @@ node tests/site_model.test.cjs
 
 ### Result data and archives
 
-Git holds the manifests, summaries, Redis logs, memory samples, and system
-metadata for each run. Git does not hold the per-trial CSV files, because the
-node85 runs write more than 190,000 of them. Get the per-trial files from the
-result archives:
+Git holds every artifact of every run, including the 496,584 per-trial CSV
+files. They are 52 bytes each and 24 MB in total, so the repository carries them
+rather than splitting the record across a repository and a download. Cloning
+takes a few minutes because of the file count, not the size.
+
+The `archives/` directory holds the same data as four tarballs, which is the
+convenient form for copying a single run to another machine:
 
 | Archive | Contents |
 |---|---|
@@ -84,9 +87,8 @@ result archives:
 | `temeraire-node85-results-with-sensitivity.tar.gz` | The same run plus 4 pairs at 64 MiB/s and 4 pairs at 256 MiB/s |
 | `temeraire-wsl-docker-results.tar.gz` | Docker/WSL development runs |
 
-These archives are not in Git, because they hold more than 400,000 per-trial
-files. They sit in `archives/` and accompany the submitted artifact. Check all
-four:
+The archives duplicate what Git already carries, so a clone needs none of them.
+Check them with:
 
 ```bash
 cd archives && sha256sum -c SHA256SUMS.txt
@@ -96,17 +98,9 @@ cd archives && sha256sum -c SHA256SUMS.txt
 and `--checksum`, and it reads the hash value directly, so it works even if the
 checksum file records an absolute path from the machine that made it.
 
-**You do not need the archives to check the reported numbers.** Git holds the
-manifest, summary, trial table, log, and memory samples of every block. The
-audit recomputes each block mean from `trials.csv` and each delta from those
-means, so `--skip-raw-files` reproduces every figure in the report from a clone
-alone. The archives add one further check: that the number of per-trial files
-behind each mean is correct.
-
-You do need them to rebuild the site data bundle, because the trial
-distributions it draws come from the per-trial files. Unpack the archives over
-`results/` first. The bundle is committed, so the site itself works from a clone
-without them.
+A clone can therefore run every check in full. `--skip-raw-files` remains
+available for a sparse or partial checkout, where it recomputes each block mean
+from `trials.csv` and skips only the count of raw files behind that mean.
 
 Two early two-trial smoke runs in the sensitivity archive have a broken
 `summary.csv` in each of their eight blocks. The German numeric locale wrote
