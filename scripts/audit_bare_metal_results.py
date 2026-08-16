@@ -23,6 +23,11 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Iterable
 
+try:
+    from . import trial_bundles
+except ImportError:  # pragma: no cover - direct script execution
+    import trial_bundles
+
 
 # The sequential workload records one row per operation and is collapsed with a
 # harmonic mean. The combined workload records a single rate that needs no
@@ -339,6 +344,8 @@ def audit_block(
         )
     expected_raw_files = config.expected_trials * len(operations)
     if config.verify_raw_files:
+        # The per-trial files ship as one bundle per block, so unpack before counting.
+        trial_bundles.ensure_extracted(run)
         raw_files = list(run.glob("trial-????-*.csv"))
         require(len(raw_files) == expected_raw_files, f"raw trial file count mismatch in {run}")
         raw_file_count = len(raw_files)

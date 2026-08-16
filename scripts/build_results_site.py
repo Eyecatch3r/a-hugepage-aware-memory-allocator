@@ -15,8 +15,10 @@ from typing import Iterable
 
 try:
     from . import aggregate_paper_closer_results as aggregate
+    from . import trial_bundles
 except ImportError:  # pragma: no cover - direct script execution
     import aggregate_paper_closer_results as aggregate
+    import trial_bundles
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -141,6 +143,8 @@ def sample_paths(paths: list[Path], maximum: int = 128) -> list[Path]:
 
 
 def read_trial_values(run_dir: Path, operation: str) -> list[float]:
+    # The per-trial files ship as one bundle per block, so unpack before reading.
+    trial_bundles.ensure_extracted(run_dir)
     values: list[float] = []
     paths = sample_paths(sorted(run_dir.glob(f"trial-*-{operation}.csv")))
     for path in paths:

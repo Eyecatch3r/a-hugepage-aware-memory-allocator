@@ -19,6 +19,11 @@ import statistics
 import sys
 from pathlib import Path
 
+try:
+    from . import trial_bundles
+except ImportError:  # pragma: no cover - direct script execution
+    import trial_bundles
+
 
 OPERATION_FOR_SUFFIX = {
     "lpush": "lpush5",
@@ -60,6 +65,7 @@ def extract_rate(text: str, source: Path) -> float:
 
 def read_block(block: Path) -> tuple[dict[tuple[int, str], float], int]:
     """Return {(trial, operation): rate} and the requests-per-trial value."""
+    trial_bundles.ensure_extracted(block)
     rates: dict[tuple[int, str], float] = {}
     for path in sorted(block.iterdir()):
         match = TRIAL_FILE.match(path.name)
