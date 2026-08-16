@@ -13,8 +13,11 @@ plots/generated/*
 results/node85-*/raw/redis/*/trial-*.csv
 results/raw/redis/*/trial-*.csv
 
-# Result archives. Each archive is large. Keep the archives out of Git and
-# publish them separately.
+# Result archives. They hold the per-trial files and travel with the submitted
+# artifact rather than in Git. See archives/README.md.
+archives/*.tar.gz
+archives/*.tar.gz.sha256
+archives/SHA256SUMS.txt
 temeraire-*.tar.gz
 temeraire-*.tar.gz.sha256
 downloaded-results/

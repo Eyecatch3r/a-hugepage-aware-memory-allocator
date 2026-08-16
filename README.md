@@ -15,6 +15,7 @@ This artifact compares historical public TCMalloc with the legacy pageheap again
 ├── docker/
 │   ├── Dockerfile
 │   └── tcmalloc_bazel_wrapper/
+├── archives/                           # per-trial data, not in Git
 ├── notes/
 │   ├── redis-temeraire-reproduction-protocol.tex
 │   ├── temeraire-main-presentation.tex
@@ -83,11 +84,17 @@ result archives:
 | `temeraire-node85-results-with-sensitivity.tar.gz` | The same run plus 4 pairs at 64 MiB/s and 4 pairs at 256 MiB/s |
 | `temeraire-wsl-docker-results.tar.gz` | Docker/WSL development runs |
 
-These archives are not in Git. Download them from the Releases page of this
-repository. Each `.sha256` file records the path on the node where the archive
-was made, so `sha256sum -c` fails on a checkout. Use
-`audit_bare_metal_results.py` instead, which reads the hash value and ignores
-the recorded path.
+These archives are not in Git, because they hold more than 400,000 per-trial
+files. They sit in `archives/` and accompany the submitted artifact. Check all
+four:
+
+```bash
+cd archives && sha256sum -c SHA256SUMS.txt
+```
+
+`audit_bare_metal_results.py` also checks the archive when you pass `--archive`
+and `--checksum`, and it reads the hash value directly, so it works even if the
+checksum file records an absolute path from the machine that made it.
 
 **You do not need the archives to check the reported numbers.** Git holds the
 manifest, summary, trial table, log, and memory samples of every block. The
