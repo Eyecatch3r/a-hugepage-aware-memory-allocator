@@ -56,11 +56,17 @@ Docker/WSL workflow. Files that contain `bare_metal` are the Debian scripts for
 the node85 run. They are separate, because the cluster changes must not change
 the earlier workflow.
 
-The Python scripts need Python 3.10 or later. They use only the standard library.
-The `tests/` directory holds the unit tests. Run them with:
+The Python scripts need Python 3.10 or later and use only the standard library.
+The `tests/` directory holds the unit tests. Run the Python tests with:
 
 ```bash
 python3 -m unittest discover -s tests -p "test_*.py"
+```
+
+One test file covers the site model in JavaScript and needs Node 18 or later:
+
+```bash
+node tests/site_model.test.cjs
 ```
 
 ### Result data and archives
@@ -76,10 +82,18 @@ result archives:
 | `temeraire-node85-results-with-sensitivity.tar.gz` | Main run plus 4 pairs at 64 MiB/s and 4 pairs at 256 MiB/s |
 | `temeraire-correction-runs-202608.tar.gz` | Correction run: 4 sequential pairs and 4 EVAL pairs, with CPU time |
 
-Both archives are large. Publish them with a release. Do not add them to Git.
-Each `.sha256` file records the path on the node where the archive was made. Do
-not call `sha256sum -c` on these files. Use `audit_bare_metal_results.py`
-instead. It reads the hash value and ignores the recorded path.
+These archives are not in Git. Download them from the Releases page of this
+repository. Each `.sha256` file records the path on the node where the archive
+was made, so `sha256sum -c` fails on a checkout. Use
+`audit_bare_metal_results.py` instead, which reads the hash value and ignores
+the recorded path.
+
+**You do not need the archives to check the reported numbers.** Git holds the
+manifest, summary, trial table, log, and memory samples of every block. The
+audit recomputes each block mean from `trials.csv` and each delta from those
+means, so `--skip-raw-files` reproduces every figure in the report from a clone
+alone. The archives add one further check: that the number of per-trial files
+behind each mean is correct.
 
 Two early two-trial smoke runs in the sensitivity archive have a broken
 `summary.csv` in each of their eight blocks. The German numeric locale wrote
@@ -87,6 +101,42 @@ decimal commas into those files before `run_bare_metal_redis_experiment.sh` set
 `LC_ALL=C`. The two runs have the manifest timestamps `20260716T152333Z` and
 `20260716T154227Z`. The audit script rejects any block that does not have 2000
 trials, so these blocks stay out of all results.
+
+## Verify the Reported Numbers from a Clone
+
+These four commands regenerate every figure in the report. They need no archive,
+no Docker, and no benchmark run. Each writes `audit.json`, `audit.md`, and a
+summary CSV, and each exits non-zero if any check fails.
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode balanced --workload sequential --skip-raw-files --raw-dir results/node85-rerun/raw --output-dir results/processed/node85-rerun-sequential
+```
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode balanced --workload combined --skip-raw-files --raw-dir results/node85-rerun/raw --output-dir results/processed/node85-rerun-combined
+```
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode balanced --skip-raw-files --raw-dir results/node85-import/raw --output-dir results/processed/node85-audit
+```
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode sensitivity --skip-raw-files --raw-dir results/node85-sensitivity-audit/raw --output-dir results/processed/node85-sensitivity-audit
+```
+
+The first command produces the reported result. Expect:
+
+```
+release off mean/median: +0.022% / +0.037%
+release on mean/median: +0.401% / +0.403%
+```
+
+Drop `--skip-raw-files` and add `--archive` and `--checksum` once you have the
+matching archive. That adds the file-count check and the archive checksum to
+everything above.
+
+The site build reads the `audit.json` files these commands write, so run them
+before `build_results_site.py`.
 
 ## Interactive Results Explorer
 

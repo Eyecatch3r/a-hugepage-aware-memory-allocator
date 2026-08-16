@@ -1,0 +1,82 @@
+allocator=temeraire
+allocator_note=paper-era public google/tcmalloc build using the hugepage-aware Temeraire path
+timestamp_utc=20260518T213642Z
+pid=90117
+port=6380
+
+## status
+VmSize:	   55448 kB
+VmHWM:	   27908 kB
+VmRSS:	   27344 kB
+RssAnon:	   23376 kB
+RssFile:	    3968 kB
+
+## info memory
+# Memory
+used_memory:21108448
+used_memory_human:20.13M
+used_memory_rss:27959296
+used_memory_rss_human:26.66M
+used_memory_peak:23591568
+used_memory_peak_human:22.50M
+used_memory_peak_perc:89.47%
+used_memory_overhead:876328
+used_memory_startup:876256
+used_memory_dataset:20232120
+used_memory_dataset_perc:100.00%
+allocator_allocated:23576480
+allocator_active:27921408
+allocator_resident:27921408
+total_system_memory:16726962176
+total_system_memory_human:15.58G
+used_memory_lua:37888
+used_memory_lua_human:37.00K
+used_memory_scripts:0
+used_memory_scripts_human:0B
+number_of_cached_scripts:0
+maxmemory:0
+maxmemory_human:0B
+maxmemory_policy:noeviction
+allocator_frag_ratio:1.18
+allocator_frag_bytes:4344928
+allocator_rss_ratio:1.00
+allocator_rss_bytes:0
+rss_overhead_ratio:1.00
+rss_overhead_bytes:37888
+mem_fragmentation_ratio:1.19
+mem_fragmentation_bytes:4382816
+mem_not_counted_for_evict:0
+mem_replication_backlog:0
+mem_clients_slaves:0
+mem_clients_normal:0
+mem_aof_buffer:0
+mem_allocator:libc
+active_defrag_running:0
+lazyfree_pending_objects:0
+
+## tcmalloc stats
+Stats not supported for the current allocator
+## smaps_rollup
+00400000-7ffdbddc3000 ---p 00000000 00:00 0                              [rollup]
+Rss:               27372 kB
+Pss:               25626 kB
+Pss_Dirty:         23380 kB
+Pss_Anon:          23380 kB
+Pss_File:           2246 kB
+Pss_Shmem:             0 kB
+Shared_Clean:       2716 kB
+Shared_Dirty:          0 kB
+Private_Clean:      1276 kB
+Private_Dirty:     23380 kB
+Referenced:        27372 kB
+Anonymous:         23380 kB
+KSM:                   0 kB
+LazyFree:              0 kB
+AnonHugePages:         0 kB
+ShmemPmdMapped:        0 kB
+FilePmdMapped:         0 kB
+Shared_Hugetlb:        0 kB
+Private_Hugetlb:       0 kB
+Swap:                  0 kB
+SwapPss:               0 kB
+Locked:                0 kB

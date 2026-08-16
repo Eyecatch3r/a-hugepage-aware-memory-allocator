@@ -1,0 +1,60 @@
+allocator=legacy
+allocator_note=paper-era public google/tcmalloc build with want_no_hpaa linked to force the legacy pageheap path
+run_label=paper-release-off
+timestamp_utc=20260716T155205Z
+pid=54523
+port=6380
+trials=10
+requests_per_trial=1000000
+clients=50
+pipeline=16
+numa_node=0
+snapshot_every_trials=5
+background_release_enabled=0
+background_release_rate_bps=unset
+build_exact_llvm=1
+llvm_ref_requested=unknown
+
+## status
+VmSize:	   55976 kB
+VmHWM:	   27956 kB
+VmRSS:	   27956 kB
+RssAnon:	   23184 kB
+RssFile:	    4772 kB
+
+## smaps_rollup
+00400000-7ffebda8a000 ---p 00000000 00:00 0                              [rollup]
+Rss:               27956 kB
+Pss:               25059 kB
+Pss_Dirty:         23184 kB
+Pss_Anon:          23184 kB
+Pss_File:           1875 kB
+Pss_Shmem:             0 kB
+Shared_Clean:       3436 kB
+Shared_Dirty:          0 kB
+Private_Clean:      1336 kB
+Private_Dirty:     23184 kB
+Referenced:        27956 kB
+Anonymous:         23184 kB
+KSM:                   0 kB
+LazyFree:              0 kB
+AnonHugePages:         0 kB
+ShmemPmdMapped:        0 kB
+FilePmdMapped:         0 kB
+Shared_Hugetlb:        0 kB
+Private_Hugetlb:       0 kB
+Swap:                  0 kB
+SwapPss:               0 kB
+Locked:                0 kB
+
+## thp_state
+AnonHugePages:   1110016 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+[always] madvise never
+always defer defer+madvise [madvise] never
+511

@@ -1,0 +1,8 @@
+60095:C 18 May 2026 20:27:00.608 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+60095:C 18 May 2026 20:27:00.608 # Redis version=6.0.9, bits=64, commit=25214bd7, modified=0, pid=60095, just started
+60095:C 18 May 2026 20:27:00.608 # Configuration loaded
+60095:M 18 May 2026 20:27:00.610 * Running mode=standalone, port=6380.
+60095:M 18 May 2026 20:27:00.611 # Server initialized
+60095:M 18 May 2026 20:27:00.611 * Ready to accept connections
+60095:M 18 May 2026 21:36:42.925 # User requested shutdown...
+60095:M 18 May 2026 21:36:42.926 # Redis is now ready to exit, bye bye...

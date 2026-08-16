@@ -1,0 +1,10 @@
+temeraire-wrapper: background release enabled rate_bps=268435456
+34623:C 11 Jul 2026 23:44:18.414 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+34623:C 11 Jul 2026 23:44:18.415 # Redis version=6.0.9, bits=64, commit=25214bd7, modified=0, pid=34623, just started
+34623:C 11 Jul 2026 23:44:18.415 # Configuration loaded
+34623:M 11 Jul 2026 23:44:18.417 * Running mode=standalone, port=6380.
+34623:M 11 Jul 2026 23:44:18.417 # Server initialized
+34623:M 11 Jul 2026 23:44:18.417 # WARNING you have Transparent Huge Pages (THP) support enabled in your kernel. This will create latency and memory usage issues with Redis. To fix this issue run the command 'echo madvise > /sys/kernel/mm/transparent_hugepage/enabled' as root, and add it to your /etc/rc.local in order to retain the setting after a reboot. Redis must be restarted after THP is disabled (set to 'madvise' or 'never').
+34623:M 11 Jul 2026 23:44:18.418 * Ready to accept connections
+34623:M 12 Jul 2026 00:54:41.638 # User requested shutdown...
+34623:M 12 Jul 2026 00:54:41.639 # Redis is now ready to exit, bye bye...

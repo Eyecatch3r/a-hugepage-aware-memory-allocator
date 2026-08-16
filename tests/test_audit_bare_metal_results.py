@@ -377,6 +377,51 @@ class CpuNormalizationTests(unittest.TestCase):
         self.assertAlmostEqual(report.pairs[0].release_off_delta_percent, 5.0)
 
 
+class SkipRawFilesTests(unittest.TestCase):
+    """The per-trial files live in the archives, not in Git.
+
+    A clone must still be able to check every reported delta, so the audit can
+    recompute the block means from trials.csv and leave the file count unchecked.
+    """
+
+    def config(self, raw: Path, verify_raw_files: bool) -> AuditConfig:
+        return AuditConfig(
+            raw_dir=raw, expected_trials=2, expected_requests=1_000,
+            expected_pairs=1, verify_raw_files=verify_raw_files,
+        )
+
+    def test_missing_trial_files_still_produce_the_same_deltas(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            with_files = audit_dataset(self.config(raw, True))
+            for path in raw.glob("redis/*/trial-*.csv"):
+                path.unlink()
+
+            without_files = audit_dataset(self.config(raw, False))
+
+        self.assertAlmostEqual(
+            without_files.pairs[0].release_off_delta_percent,
+            with_files.pairs[0].release_off_delta_percent,
+        )
+        self.assertAlmostEqual(
+            without_files.pairs[0].release_on_delta_percent,
+            with_files.pairs[0].release_on_delta_percent,
+        )
+        self.assertEqual(without_files.total_raw_trial_files, 0)
+        self.assertTrue(
+            any("Per-trial CSV files were not checked" in w for w in without_files.warnings),
+            without_files.warnings,
+        )
+
+    def test_the_default_still_requires_the_trial_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            next(raw.glob("redis/*/trial-0001-lpush.csv")).unlink()
+
+            with self.assertRaisesRegex(AuditError, "raw trial file count mismatch"):
+                audit_dataset(self.config(raw, True))
+
+
 class RetryReportingTests(unittest.TestCase):
     def test_a_retried_block_raises_a_warning(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

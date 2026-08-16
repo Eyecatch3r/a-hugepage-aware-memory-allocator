@@ -3,14 +3,15 @@ __pycache__/
 *.pyc
 third_party/
 third_party-src-probe/
-results/raw/*
 results/processed/*
 plots/generated/*
 
-# Per-trial raw CSV files from the node85 runs. Git keeps the manifests,
-# summaries, logs, and memory samples. The per-trial files are too many for
-# Git. Get them from the result archives.
+# Per-trial raw CSV files. Git keeps the manifests, summaries, logs, and
+# memory samples for every block, which is what the audit and the site build
+# read. The per-trial files are too many for Git; get them from the result
+# archives.
 results/node85-*/raw/redis/*/trial-*.csv
+results/raw/redis/*/trial-*.csv
 
 # Result archives. Each archive is large. Keep the archives out of Git and
 # publish them separately.

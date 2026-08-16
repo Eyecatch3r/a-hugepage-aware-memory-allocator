@@ -572,6 +572,29 @@ def build_results_data() -> dict[str, object]:
     }
 
 
+def require_complete(payload: dict[str, object]) -> None:
+    """Stop if an environment came out empty.
+
+    A missing result tree used to yield an environment with no pairs rather than
+    an error, so a rebuild could quietly ship a smaller bundle than the one in
+    version control. Every environment must have matched pairs, and the two that
+    carry a release-rate sweep must have its records.
+    """
+    environments = payload["environments"]
+    assert isinstance(environments, dict)
+    problems: list[str] = []
+    for name, environment in environments.items():
+        if not environment["historical"]:
+            problems.append(f"{name}: no matched pairs were found")
+        if name in {"baremetal", "wslDocker"} and not environment["releaseSensitivity"]:
+            problems.append(f"{name}: no release-rate records were found")
+    if problems:
+        raise SystemExit(
+            "The result trees are incomplete, so the bundle would be smaller than "
+            "the one in version control:\n  " + "\n  ".join(problems)
+        )
+
+
 def write_javascript_bundle(output: Path, payload: dict[str, object]) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -584,6 +607,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
     payload = build_results_data()
+    require_complete(payload)
     write_javascript_bundle(args.output, payload)
     environments = payload["environments"]
     assert isinstance(environments, dict)

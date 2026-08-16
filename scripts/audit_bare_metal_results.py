@@ -37,6 +37,12 @@ OPERATION_SETS = {
 EXPECTED_LLVM_REF = "cd442157cff4aad209ae532cbf031abbe10bc1df"
 EXPECTED_TCMALLOC_REF = "8e534f50707469baac732559494559db95732e12"
 EXPECTED_REDIS_VERSION = "6.0.9"
+RAW_FILES_SKIPPED_WARNING = (
+    "Per-trial CSV files were not checked. Block means were recomputed from "
+    "trials.csv, which is enough to verify every reported delta, but the count "
+    "of raw files behind each mean was not confirmed. Run without "
+    "--skip-raw-files against an unpacked archive for the complete check."
+)
 T_CRITICAL_95 = {
     1: 12.706,
     2: 4.303,
@@ -70,6 +76,11 @@ class AuditConfig:
     # manifests that used it, so a tree holding both readings of the paper's
     # trial sentence can be audited one reading at a time.
     workload: str = "any"
+    # The per-trial CSV files are too numerous for version control and travel in
+    # the result archives instead. Without them the block means still recompute
+    # from trials.csv, so the reported deltas remain verifiable from a clone;
+    # only the count of raw files goes unchecked.
+    verify_raw_files: bool = True
     expected_llvm_ref: str = EXPECTED_LLVM_REF
     expected_tcmalloc_ref: str = EXPECTED_TCMALLOC_REF
     expected_redis_version: str = EXPECTED_REDIS_VERSION
@@ -326,9 +337,13 @@ def audit_block(
             f"summary mean mismatch in {run} for {operation}: "
             f"summary={summary[operation]}, recomputed={recomputed}",
         )
-    raw_files = list(run.glob("trial-????-*.csv"))
     expected_raw_files = config.expected_trials * len(operations)
-    require(len(raw_files) == expected_raw_files, f"raw trial file count mismatch in {run}")
+    if config.verify_raw_files:
+        raw_files = list(run.glob("trial-????-*.csv"))
+        require(len(raw_files) == expected_raw_files, f"raw trial file count mismatch in {run}")
+        raw_file_count = len(raw_files)
+    else:
+        raw_file_count = 0
     samples = list(run.glob("memory-sample-????.txt"))
     expected_samples = config.expected_trials // snapshot_every
     require(len(samples) == expected_samples, f"memory sample count mismatch in {run}")
@@ -373,7 +388,7 @@ def audit_block(
         requests_total=requests_total,
         requests_per_cpu_second=None if cpu_seconds is None else requests_total / cpu_seconds,
         trial_rows=config.expected_trials * len(operations),
-        raw_trial_files=len(raw_files),
+        raw_trial_files=raw_file_count,
         memory_samples=len(samples),
         release_confirmations=confirmation_count,
         trial_retries=retries,
@@ -562,6 +577,8 @@ def audit_dataset(config: AuditConfig, archive_sha256: str | None = None) -> Aud
         warnings.append("CPU governor, frequency, turbo state, and temperature are not recorded.")
     if not all("libtcmalloc" in (config.raw_dir / "redis" / block.run / "memory-before.txt").read_text(errors="replace") for pair in pairs for block in pair.blocks):
         warnings.append("Per-block /proc allocator mappings are absent; preload was verified separately before the run.")
+    if not config.verify_raw_files:
+        warnings.append(RAW_FILES_SKIPPED_WARNING)
     retried = [(block.run, block.trial_retries) for pair in pairs for block in pair.blocks if block.trial_retries]
     if retried:
         detail = ", ".join(f"{name}={count}" for name, count in retried)
@@ -688,11 +705,15 @@ def audit_sensitivity(config: AuditConfig, archive_sha256: str | None = None) ->
         warnings.append("CPU governor, frequency, turbo state, and temperature are not recorded.")
     if not all("libtcmalloc" in (redis_root / block.run / "memory-before.txt").read_text(errors="replace") for pair in pairs for block in pair.blocks):
         warnings.append("Per-block /proc allocator mappings are absent; preload was verified separately before the run.")
+    if not config.verify_raw_files:
+        warnings.append(RAW_FILES_SKIPPED_WARNING)
     retried = [(block.run, block.trial_retries) for pair in pairs for block in pair.blocks if block.trial_retries]
     if retried:
         detail = ", ".join(f"{name}={count}" for name, count in retried)
         warnings.append(f"Some benchmark invocations failed and were repeated: {detail}.")
     warnings.append("The paper does not state a release rate. Each rate is a local experimental parameter.")
+    if not config.verify_raw_files:
+        warnings.append(RAW_FILES_SKIPPED_WARNING)
     return SensitivityReport(
         raw_dir=str(config.raw_dir),
         total_blocks=sum(len(pair.blocks) for pair in pairs),
@@ -931,6 +952,15 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     parser.add_argument(
+        "--skip-raw-files",
+        action="store_true",
+        help=(
+            "Do not check the per-trial CSV files. Those travel in the result "
+            "archives rather than in Git, so this makes the reported deltas "
+            "verifiable from a clone alone."
+        ),
+    )
+    parser.add_argument(
         "--mode",
         choices=("balanced", "sensitivity"),
         default="balanced",
@@ -958,6 +988,7 @@ def main() -> int:
             expected_pairs=args.expected_pairs,
             release_rate_bps=args.release_rate_bps,
             workload=args.workload,
+            verify_raw_files=not args.skip_raw_files,
         )
         if args.mode == "sensitivity":
             sensitivity = audit_sensitivity(config, archive_sha256)

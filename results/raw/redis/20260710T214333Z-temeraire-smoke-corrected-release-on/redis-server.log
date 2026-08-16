@@ -1,0 +1,1 @@
+/workspace/third_party/src/redis/src/redis-server: symbol lookup error: /workspace/third_party/install/google-tcmalloc/lib/libtcmalloc_temeraire.so: undefined symbol: _ZN8tcmalloc15MallocExtension24ProcessBackgroundActionsEv
