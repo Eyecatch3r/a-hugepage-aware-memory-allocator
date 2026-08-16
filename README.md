@@ -78,9 +78,10 @@ result archives:
 
 | Archive | Contents |
 |---|---|
-| `temeraire-node85-results.tar.gz` | Main run: 4 balanced pairs at 16 MiB/s |
-| `temeraire-node85-results-with-sensitivity.tar.gz` | Main run plus 4 pairs at 64 MiB/s and 4 pairs at 256 MiB/s |
-| `temeraire-correction-runs-202608.tar.gz` | Correction run: 4 sequential pairs and 4 EVAL pairs, with CPU time |
+| `temeraire-correction-runs-202608.tar.gz` | Correction run, August 2026: 4 sequential pairs and 4 EVAL pairs, with CPU time. Holds the reported result. |
+| `temeraire-node85-results.tar.gz` | First bare-metal run, July 2026: 4 balanced pairs at 16 MiB/s |
+| `temeraire-node85-results-with-sensitivity.tar.gz` | The same run plus 4 pairs at 64 MiB/s and 4 pairs at 256 MiB/s |
+| `temeraire-wsl-docker-results.tar.gz` | Docker/WSL development runs |
 
 These archives are not in Git. Download them from the Releases page of this
 repository. Each `.sha256` file records the path on the node where the archive
@@ -94,6 +95,11 @@ audit recomputes each block mean from `trials.csv` and each delta from those
 means, so `--skip-raw-files` reproduces every figure in the report from a clone
 alone. The archives add one further check: that the number of per-trial files
 behind each mean is correct.
+
+You do need them to rebuild the site data bundle, because the trial
+distributions it draws come from the per-trial files. Unpack the archives over
+`results/` first. The bundle is committed, so the site itself works from a clone
+without them.
 
 Two early two-trial smoke runs in the sensitivity archive have a broken
 `summary.csv` in each of their eight blocks. The German numeric locale wrote

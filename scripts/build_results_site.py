@@ -588,10 +588,21 @@ def require_complete(payload: dict[str, object]) -> None:
             problems.append(f"{name}: no matched pairs were found")
         if name in {"baremetal", "wslDocker"} and not environment["releaseSensitivity"]:
             problems.append(f"{name}: no release-rate records were found")
+        empty = [
+            pair["id"] for pair in environment["historical"]
+            if not pair["legacy"]["distributions"] or not pair["temeraire"]["distributions"]
+        ]
+        if empty:
+            problems.append(
+                f"{name}: {len(empty)} pairs have no trial distributions, "
+                f"starting at {empty[0]}"
+            )
     if problems:
         raise SystemExit(
             "The result trees are incomplete, so the bundle would be smaller than "
             "the one in version control:\n  " + "\n  ".join(problems)
+            + "\n\nThe per-trial CSV files are not in Git. Unpack the result "
+            "archives over results/ before rebuilding the bundle."
         )
 
 
