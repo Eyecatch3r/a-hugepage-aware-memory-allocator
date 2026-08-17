@@ -12,11 +12,6 @@ plots/generated/*
 results/*/raw/redis/*/trial-*.csv
 results/raw/redis/*/trial-*.csv
 
-# results/node85-import-with-sensitivity/ is an incomplete duplicate of
-# node85-sensitivity-audit: 18 full blocks against 32, and nothing reads it. Its
-# per-trial files are not worth carrying.
-results/node85-import-with-sensitivity/raw/redis/*/trial-*.csv
-
 # Result archives. They hold the per-trial files and travel with the submitted
 # artifact rather than in Git. See archives/README.md.
 archives/*.tar.gz
