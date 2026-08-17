@@ -145,12 +145,55 @@
     );
   }
 
+  const ALL_METRICS = ["combined", "lpush", "lrange"];
+
+  // The combined workload records one rate per trial, so it has no per-operation
+  // breakdown. Each environment declares which metrics it can show.
+  function availableMetrics() {
+    return data.metrics && data.metrics.length ? data.metrics : ALL_METRICS;
+  }
+
+  function coerceMetric(metric) {
+    return availableMetrics().includes(metric) ? metric : availableMetrics()[0];
+  }
+
+  function syncMetricControls() {
+    const metrics = availableMetrics();
+    ["overview-metric", "sensitivity-metric"].forEach((id) => {
+      const select = byId(id);
+      if (!select) return;
+      [...select.options].forEach((option) => {
+        option.hidden = !metrics.includes(option.value);
+        option.disabled = !metrics.includes(option.value);
+      });
+      const field = select.closest("label");
+      if (field) field.hidden = metrics.length < 2;
+    });
+    document.querySelectorAll('[data-control="explorerMetric"] button').forEach((button) => {
+      button.hidden = !metrics.includes(button.dataset.value);
+    });
+    const explorerField = document.querySelector('[data-control="explorerMetric"]')?.closest("fieldset");
+    if (explorerField) explorerField.hidden = metrics.length < 2;
+  }
+
+  function populateEnvironmentSelect() {
+    const select = byId("environment-select");
+    if (!select || select.options.length) return;
+    Object.values(results.environments).forEach((environment) => {
+      const option = document.createElement("option");
+      option.value = environment.id;
+      option.textContent = environment.label;
+      select.append(option);
+    });
+  }
+
   function renderEnvironmentContext() {
     setText("environment-kicker", `Redis 6.0.9 · ${data.shortLabel}`);
     setText("scope-description", data.methodology.scope);
     const outlierControl = byId("overview-outlier").closest("label");
     outlierControl.hidden = !data.outlier;
     if (data.outlier) setText("outlier-label", data.outlier.label);
+    syncMetricControls();
   }
 
   function initializeHero() {
@@ -282,6 +325,9 @@
     data = model.selectEnvironment(results, environmentId);
     state.environment = data.id;
     state.selectedPair = data.historical[0]?.id || "";
+    state.overviewMetric = coerceMetric(state.overviewMetric);
+    state.explorerMetric = coerceMetric(state.explorerMetric);
+    state.sensitivityMetric = coerceMetric(state.sensitivityMetric);
     state.includeOutlier = true;
     byId("overview-outlier").checked = true;
     byId("environment-select").value = data.id;
@@ -307,6 +353,12 @@
     setText("run-release", pair.releaseMode === "on" ? "On" : "Off");
     setText("run-order", pair.order === "L first" ? "Legacy first" : "Temeraire first");
     setText("run-trials", formatInteger(Math.min(pair.legacy.trials, pair.temeraire.trials)));
+    // Only runs from August 2026 onward record CPU time, so the field appears
+    // only where the paper's unit can actually be reported.
+    const cpuField = byId("run-cpu-field");
+    const hasCpu = typeof pair.deltaPerCpuSecond === "number";
+    if (cpuField) cpuField.hidden = !hasCpu;
+    if (hasCpu) setText("run-cpu-delta", model.formatSigned(pair.deltaPerCpuSecond));
     byId("legacy-source").href = `../${pair.legacy.path}/summary.csv`;
     byId("temeraire-source").href = `../${pair.temeraire.path}/summary.csv`;
   }
@@ -334,7 +386,7 @@
     const compact = width < 620;
     const margin = { top: 54, right: compact ? 32 : 74, bottom: 55, left: compact ? 82 : 125 };
     configureSvg(svg, width, height);
-    const metrics = ["combined", "lpush", "lrange"];
+    const metrics = availableMetrics();
     const maximum = niceMaximum(Math.max(...metrics.flatMap((metric) => [pair.legacy.throughput[metric], pair.temeraire.throughput[metric]])) * 1.05);
     const scaleX = linearScale(0, maximum, margin.left, width - margin.right);
     const ticks = model.linearTicks(0, maximum, compact ? 4 : 6);
@@ -650,6 +702,7 @@
       document.body.innerHTML = '<main class="empty-state">The generated result bundle is missing. Run <code>python scripts/build_results_site.py</code>.</main>';
       return;
     }
+    populateEnvironmentSelect();
     byId("environment-select").value = state.environment;
     renderEnvironmentContext();
     initializeHero();

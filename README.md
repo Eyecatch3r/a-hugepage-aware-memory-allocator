@@ -15,6 +15,7 @@ This artifact compares historical public TCMalloc with the legacy pageheap again
 ├── docker/
 │   ├── Dockerfile
 │   └── tcmalloc_bazel_wrapper/
+├── archives/                           # per-trial data, not in Git
 ├── notes/
 │   ├── redis-temeraire-reproduction-protocol.tex
 │   ├── temeraire-main-presentation.tex
@@ -22,14 +23,16 @@ This artifact compares historical public TCMalloc with the legacy pageheap again
 ├── plots/
 │   └── generated/
 ├── results/
-│   ├── node85-import/                  # bare-metal main run, 4 balanced pairs
-│   ├── node85-sensitivity-audit/       # bare-metal main run plus 2 extra rates
+│   ├── node85-import/                  # July run, 4 balanced pairs
+│   ├── node85-sensitivity-audit/       # July run plus 2 extra release rates
+│   ├── node85-rerun/                   # August correction run, both workloads
 │   ├── processed/
 │   └── raw/                            # Docker/WSL runs
 ├── scripts/
 │   ├── aggregate_paper_closer_results.py
 │   ├── audit_bare_metal_results.py
 │   ├── build_results_site.py
+│   ├── trial_bundles.py
 │   ├── check_allocator_preload.sh
 │   ├── collect_system_info.sh
 │   ├── collect_bare_metal_system_info.sh
@@ -55,29 +58,64 @@ Docker/WSL workflow. Files that contain `bare_metal` are the Debian scripts for
 the node85 run. They are separate, because the cluster changes must not change
 the earlier workflow.
 
-The Python scripts need Python 3.10 or later. They use only the standard library.
-The `tests/` directory holds the unit tests. Run them with:
+The Python scripts need Python 3.10 or later and use only the standard library.
+The `tests/` directory holds the unit tests. Run the Python tests with:
 
 ```bash
 python3 -m unittest discover -s tests -p "test_*.py"
 ```
 
+One test file covers the site model in JavaScript and needs Node 18 or later:
+
+```bash
+node tests/site_model.test.cjs
+```
+
 ### Result data and archives
 
-Git holds the manifests, summaries, Redis logs, memory samples, and system
-metadata for each run. Git does not hold the per-trial CSV files, because the
-node85 runs write more than 190,000 of them. Get the per-trial files from the
-result archives:
+Git holds every artifact of every run, including all 496,584 per-trial CSV files.
+They travel as one `trial-outputs.tar.gz` per block, 182 bundles and 14 MB in
+total, because half a million loose files of 52 bytes each would push a clone
+past four minutes for 24 MB of content.
+
+You do not unpack them yourself. The audit, the summary rebuilder, and the site
+build call `trial_bundles.ensure_extracted` before they read, which unpacks a
+block only when its loose files are absent. The first command that touches a
+block pays for that block once, and later runs find the files already there. A
+clone therefore takes seconds and still runs every check in full.
+
+To pack, unpack, or check bundles by hand:
+
+```bash
+python3 scripts/trial_bundles.py --unpack results/node85-rerun/raw
+python3 scripts/trial_bundles.py --verify results/node85-rerun/raw
+```
+
+The `archives/` directory holds the same data as four tarballs, which is the
+convenient form for copying a single run to another machine:
 
 | Archive | Contents |
 |---|---|
-| `temeraire-node85-results.tar.gz` | Main run: 4 balanced pairs at 16 MiB/s |
-| `temeraire-node85-results-with-sensitivity.tar.gz` | Main run plus 4 pairs at 64 MiB/s and 4 pairs at 256 MiB/s |
+| `temeraire-correction-runs-202608.tar.gz` | Correction run, August 2026: 4 sequential pairs and 4 EVAL pairs, with CPU time. Holds the reported result. |
+| `temeraire-node85-results.tar.gz` | First bare-metal run, July 2026: 4 balanced pairs at 16 MiB/s |
+| `temeraire-node85-results-with-sensitivity.tar.gz` | The same run plus 4 pairs at 64 MiB/s and 4 pairs at 256 MiB/s |
+| `temeraire-wsl-docker-results.tar.gz` | Docker/WSL development runs |
 
-Both archives are large. Publish them with a release. Do not add them to Git.
-Each `.sha256` file records the path on the node where the archive was made. Do
-not call `sha256sum -c` on these files. Use `audit_bare_metal_results.py`
-instead. It reads the hash value and ignores the recorded path.
+The archives duplicate what Git already carries, so a clone needs none of them.
+Check them with:
+
+```bash
+cd archives && sha256sum -c SHA256SUMS.txt
+```
+
+`audit_bare_metal_results.py` also checks the archive when you pass `--archive`
+and `--checksum`, and it reads the hash value directly, so it works even if the
+checksum file records an absolute path from the machine that made it.
+
+A clone runs every check in full, including the count of per-trial files behind
+each block mean. `--skip-raw-files` remains available for a sparse or partial
+checkout, where it recomputes the block means from `trials.csv` and skips that
+one count.
 
 Two early two-trial smoke runs in the sensitivity archive have a broken
 `summary.csv` in each of their eight blocks. The German numeric locale wrote
@@ -86,13 +124,56 @@ decimal commas into those files before `run_bare_metal_redis_experiment.sh` set
 `20260716T154227Z`. The audit script rejects any block that does not have 2000
 trials, so these blocks stay out of all results.
 
+## Verify the Reported Numbers from a Clone
+
+These four commands regenerate every figure in the report. They need no archive,
+no Docker, and no benchmark run. Each writes `audit.json`, `audit.md`, and a
+summary CSV, and each exits non-zero if any check fails.
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode balanced --workload sequential --skip-raw-files --raw-dir results/node85-rerun/raw --output-dir results/processed/node85-rerun-sequential
+```
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode balanced --workload combined --skip-raw-files --raw-dir results/node85-rerun/raw --output-dir results/processed/node85-rerun-combined
+```
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode balanced --skip-raw-files --raw-dir results/node85-import/raw --output-dir results/processed/node85-audit
+```
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode sensitivity --skip-raw-files --raw-dir results/node85-sensitivity-audit/raw --output-dir results/processed/node85-sensitivity-audit
+```
+
+The first command produces the reported result. Expect:
+
+```
+release off mean/median: +0.022% / +0.037%
+release on mean/median: +0.401% / +0.403%
+```
+
+Drop `--skip-raw-files` and add `--archive` and `--checksum` once you have the
+matching archive. That adds the file-count check and the archive checksum to
+everything above.
+
+The site build reads the `audit.json` files these commands write, so run them
+before `build_results_site.py`.
+
 ## Interactive Results Explorer
 
-The static site in `site/` shows the historical matched runs, trial
-distributions, process-memory snapshots, and background-release-rate
-sensitivity results. Use the Test environment control to select the native
-node85 results or the WSL/Docker results. The site has no runtime dependencies
-or network requests.
+The static site in `site/` shows the matched runs, trial distributions,
+process-memory snapshots, and background-release-rate sensitivity results. Use
+the Test environment control to select one of four result sets:
+
+| Environment | Contents |
+|---|---|
+| Correction run | node85, August 2026, sequential workload. The reported result. Shows the delta per CPU second. |
+| Correction run, EVAL | node85, August 2026, one request pushes and reads. One metric only, because this workload records one rate per trial. |
+| First bare metal run | node85, July 2026. No CPU record. |
+| WSL / Docker | Container runs. Superseded. |
+
+The site has no runtime dependencies and makes no network requests.
 
 Open `site/index.html` directly, or serve it locally:
 
@@ -281,7 +362,78 @@ PAPER_BACKGROUND_RELEASE_RATE_BPS=16777216 \
 Remove the two reduced benchmark variables for the full 2000-trial run. The
 paper does not state a public background-release rate, so
 `PAPER_BACKGROUND_RELEASE_RATE_BPS` is a recorded local parameter rather than a
-paper-derived constant. A release-on sensitivity series can be run separately:
+paper-derived constant.
+
+#### Workload selection
+
+`PAPER_WORKLOAD` selects which reading of the paper's trial sentence to run. The
+runner records the value in the manifest and in `memory-before.txt` for each
+block.
+
+| Value | Trial structure |
+|---|---|
+| `sequential` (default) | One LPUSH run, then one LRANGE run: two separate N-request command streams (2N commands total). All pushes run before all reads. |
+| `combined` | One run of an `EVAL` script that pushes five elements and reads those five back. One command per request. |
+
+Run both values to measure the effect of the choice. Neither value is correct on
+its own. The `sequential` value doubles the command count and separates the
+phases. The `combined` value adds Lua interpreter allocations to a measurement of
+allocation.
+
+```bash
+PAPER_WORKLOAD=combined \
+PAPER_NUMA_NODE=0 \
+PAPER_BACKGROUND_RELEASE_RATE_BPS=16777216 \
+./scripts/run_bare_metal_redis_experiment.sh --allocator-order balanced
+```
+
+#### Detached SSH run with `setsid`
+
+Use the detached launcher for a full run that must survive closing the SSH
+connection. It preserves the `PAPER_*` and `REDIS_*` environment, redirects all
+terminal file descriptors, ignores `SIGHUP`, and records a durable log, PID, and
+final exit status under `results/run-logs/`.
+
+```bash
+PAPER_WORKLOAD=combined \
+PAPER_NUMA_NODE=0 \
+PAPER_BACKGROUND_RELEASE_RATE_BPS=16777216 \
+REDIS_MAX_TRIAL_ATTEMPTS=1 \
+bash ./scripts/launch_bare_metal_rerun_detached.sh --allocator-order balanced
+```
+
+The conservative command disables invocation-level retries. A failed LPUSH or
+combined EVAL may already have changed Redis before its connection fails, and
+CPU consumed by a failed attempt cannot be removed from the block total. Until
+retry is moved around the complete flush-and-workload trial, aborting preserves
+the validity of the normalized result.
+
+The launcher prints the exact paths for the run. It is safe to close SSH after
+it prints `Detached rerun started`. After reconnecting, inspect the files with:
+
+```bash
+tail -f results/run-logs/bare-metal-rerun-*.log
+cat results/run-logs/bare-metal-rerun-*.status
+```
+
+`state=running` means the detached wrapper is still active. On completion the
+status changes to `state=finished` and includes `exit_code=0`; any other exit
+code means the run failed and the log contains the error.
+
+#### CPU time
+
+Each block records the CPU time of the Redis server in the `## cpu` section of
+`memory-before.txt`, every memory sample, and `memory-after.txt`. Redis restarts
+for each block, so `used_cpu_user` plus `used_cpu_sys` in `memory-after.txt` is
+the CPU total for that block. The audit script divides the request count by that
+total to report throughput in the paper's unit of requests per second per core.
+
+The audit reports the normalized result only when every block in the comparison
+recorded CPU time. Blocks from earlier runs have no `## cpu` section, so the
+audit reports their unnormalized deltas and states that the normalized summary is
+not available.
+
+A release-on sensitivity series can be run separately:
 
 ```bash
 RELEASE_RATES_MIB="16 64 256" \
@@ -382,7 +534,25 @@ Raw outputs must not be modified. Derived tables, plots, and summaries go in `re
 
 ## Known Deviations from the Paper
 
-Expected deviations include host CPU, kernel version, Transparent Huge Page (THP) settings, Docker behavior, compiler version, and the fact that public TCMalloc source is only an approximation of the internal paper artifact. Results should be interpreted accordingly.
+The paper states five properties of its Redis experiment. This artifact matches
+three of them and does not match two:
+
+| Property the paper states | This artifact |
+|---|---|
+| Redis 6.0.9 | matched |
+| Legacy TCMalloc pageheap as the baseline | matched, through `want_no_hpaa` |
+| LLVM commit `cd442157cf` with `-O3` | matched, built from source |
+| Intel Skylake Xeon processors | **not matched.** Node85 has a Xeon Gold 5318N, an Ice Lake part |
+| Throughput normalized for CPU | **not matched.** This artifact reports the unnormalized rate |
+
+The paper does not state the Linux distribution, the kernel version, the THP
+policy, or the background release rate for Redis. Record those values locally,
+because you cannot match them.
+
+Further deviations apply to the Docker/WSL runs: the container adds its own
+behavior, and the shared kernel supplies the THP policy. The public TCMalloc
+source stays a historical approximation of the internal paper artifact in both
+workflows.
 
 ## Current Result Interpretation
 
@@ -392,11 +562,81 @@ reproduction of the Redis rows in Table 1 of the paper.
 The paper gives two Redis values: `+0.75%` with periodic release off, and
 `+0.44%` with periodic release on.
 
-### Reported result: the bare-metal node85 run
+Three differences apply to every comparison with those two values. Read them
+before you read a matching percentage as a reproduction.
 
-The report uses these results only. Each value is one matched pair of a legacy
-block and a Temeraire block, at 2000 trials for each block. A positive value
-means that Temeraire was faster.
+1. **The metric is a different quantity, but the difference is small here.** The
+   caption of Table 1 in the paper states that its throughput is "normalized for
+   CPU", and the text gives the unit as requests per second per core. The
+   correction run records CPU time and reports both units. The two differ by less
+   than 0.1 percentage points, because Redis 6.0.9 runs commands on one thread
+   and the benchmark keeps that thread busy: each block held between 98 and 99.7
+   percent of one core. Do not carry this finding over to a multithreaded
+   application. Runs before August 2026 have no CPU record and report the raw
+   rate only.
+2. **The workload is one reading of an underspecified sentence.** The paper
+   specifies 2000 trials, each trial making one million requests "to push 5
+   elements and read those 5 elements". Read literally, one request covers the
+   push and the read. Each local trial instead runs 1,000,000 LPUSH commands and
+   then 1,000,000 LRANGE commands, which is two million commands. All pushes run
+   before all reads, so `LRANGE 0 4` returns the same final five elements on
+   every read while the list holds five million. An interleaved implementation
+   keeps the live set small and touches memory that was just written. That is a
+   different access pattern for the allocator under test.
+3. **The processor generation differs.** The paper ran Redis on Intel Skylake
+   Xeon processors. Node85 has a Xeon Gold 5318N, which is an Ice Lake part. TLB
+   capacity and hugepage handling changed between the two generations, so the
+   hardware that matters most to a TLB-pressure result is not matched.
+
+### Reported result: the correction run
+
+These are the reported results. The correction run of August 2026 records the CPU
+time of each block, so it can report throughput in the unit that the paper uses.
+Each value is one matched pair of a legacy block and a Temeraire block, at 2000
+trials for each block. A positive value means that Temeraire was faster.
+
+| Condition | Pairs | Mean | Median | 95% interval | Positive | Paper |
+|---|---:|---:|---:|---:|---:|---:|
+| Release off | 4 | +0.022% | +0.037% | [-0.62%, +0.67%] | 2/4 | +0.75% |
+| Release off, per CPU second | 4 | +0.091% | +0.116% | [-0.74%, +0.93%] | 3/4 | +0.75% |
+| Release on, 16 MiB/s | 4 | +0.401% | +0.403% | [+0.20%, +0.61%] | 4/4 | +0.44% |
+| Release on, per CPU second | 4 | +0.474% | +0.464% | [+0.30%, +0.65%] | 4/4 | +0.44% |
+
+Read these four rows together:
+
+- **Release-on reproduces the paper.** All four pairs favor Temeraire. Both
+  intervals exclude zero, and both contain the paper's `+0.44%`. This holds in
+  raw throughput and in the paper's own unit.
+- **Release-off is unresolved.** The interval covers zero. It also covers the
+  paper's `+0.75%` once the result is normalized. Four pairs cannot settle this
+  condition.
+- **The paper does not state a release rate.** The 16 MiB/s value is a local
+  parameter. Do not read it as the value that the paper used.
+
+Regenerate both tables with:
+
+```bash
+python3 scripts/audit_bare_metal_results.py --mode balanced --workload sequential \
+  --raw-dir results/node85-rerun/raw \
+  --output-dir results/processed/node85-rerun-sequential
+```
+
+The same run measured the second reading of the paper's trial sentence. That
+reading costs 4.11 hours per block against 1.14, and it gives much wider
+intervals, so the sequential reading is the better instrument. Use
+`--workload combined` to regenerate this table.
+
+| Condition | Pairs | Mean | Median | 95% interval | Positive |
+|---|---:|---:|---:|---:|---:|
+| Release off | 4 | +0.678% | +0.842% | [-0.37%, +1.73%] | 3/4 |
+| Release on, 16 MiB/s | 4 | +0.249% | -0.194% | [-2.21%, +2.75%] | 1/4 |
+
+### First bare-metal run, July 2026
+
+This run has no CPU record, so it cannot report the paper's unit. Its release-on
+result agrees in direction with the correction run. Its release-off result does
+not: the two samples give -0.34% and +0.037%, with intervals that overlap almost
+completely. Read them together as one condition that four pairs cannot resolve.
 
 | Condition | Pairs | Mean | Median | 95% interval | Paper |
 |---|---:|---:|---:|---:|---:|
@@ -405,20 +645,13 @@ means that Temeraire was faster.
 | Release on, 64 MiB/s | 4 | -0.49% | -0.60% | [-0.92%, -0.07%] | not stated |
 | Release on, 256 MiB/s | 4 | -0.29% | -0.08% | [-1.54%, +0.96%] | not stated |
 
-Read these four rows together:
+At 64 MiB/s all four pairs favor legacy TCMalloc, and the interval excludes zero.
+Four conditions were tested, and no correction for multiple comparisons was
+applied. Record this result, but do not call it an established effect.
 
-- Release-off does not reproduce the paper. Its 95% interval excludes `+0.75%`.
-- Release-on at 16 MiB/s is close to the paper. Its interval also covers zero.
-  This is agreement in one configuration. It is not a confirmed effect.
-- The paper does not state a release rate. The 16 MiB/s value is a local
-  parameter. Do not read it as the value that the paper used.
-- At 64 MiB/s all four pairs favor legacy TCMalloc, and the interval excludes
-  zero. This is the only condition that separates from the baseline. At this
-  rate, Temeraire is slower than legacy TCMalloc.
-
-The defensible claim is narrow. The public reconstruction reaches the small
-positive Redis effect of the paper in one recorded release configuration. It does
-not reach it across release modes and rates.
+Every interval on this page is a Student-t interval on the log-transformed pair
+ratios, with the complete pairs as the replication unit. It belongs to the mean,
+not to the median beside it.
 
 ### Historical result: the Docker/WSL runs
 

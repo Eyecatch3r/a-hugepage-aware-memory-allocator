@@ -1,0 +1,13 @@
+temeraire-wrapper: background release enabled rate_bps=16777216
+temeraire-wrapper: background release enabled rate_bps=16777216
+1386689:C 05 Aug 2026 01:58:13.923 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+1386689:C 05 Aug 2026 01:58:13.923 # Redis version=6.0.9, bits=64, commit=00000000, modified=0, pid=1386689, just started
+1386689:C 05 Aug 2026 01:58:13.923 # Configuration loaded
+1386689:M 05 Aug 2026 01:58:13.923 * Increased maximum number of open files to 10032 (it was originally set to 1024).
+1386689:M 05 Aug 2026 01:58:13.924 * Running mode=standalone, port=6380.
+1386689:M 05 Aug 2026 01:58:13.924 # Server initialized
+1386689:M 05 Aug 2026 01:58:13.924 # WARNING overcommit_memory is set to 0! Background save may fail under low memory condition. To fix this issue add 'vm.overcommit_memory = 1' to /etc/sysctl.conf and then reboot or run the command 'sysctl vm.overcommit_memory=1' for this to take effect.
+1386689:M 05 Aug 2026 01:58:13.924 # WARNING you have Transparent Huge Pages (THP) support enabled in your kernel. This will create latency and memory usage issues with Redis. To fix this issue run the command 'echo madvise > /sys/kernel/mm/transparent_hugepage/enabled' as root, and add it to your /etc/rc.local in order to retain the setting after a reboot. Redis must be restarted after THP is disabled (set to 'madvise' or 'never').
+1386689:M 05 Aug 2026 01:58:13.924 * Ready to accept connections
+1386689:M 05 Aug 2026 03:06:17.768 # User requested shutdown...
+1386689:M 05 Aug 2026 03:06:17.768 # Redis is now ready to exit, bye bye...

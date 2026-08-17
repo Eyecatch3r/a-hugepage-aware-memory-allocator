@@ -30,8 +30,7 @@
       <label class="environment-field">
         <span>Test environment</span>
         <select id="environment-select" aria-label="Test environment">
-          <option value="baremetal">Bare metal</option>
-          <option value="wslDocker">WSL / Docker</option>
+          <!-- Options are built from the data bundle so a new run needs no markup change. -->
         </select>
       </label>
     </header>
@@ -206,6 +205,7 @@
               <div><dt>Release</dt><dd id="run-release">—</dd></div>
               <div><dt>Order</dt><dd id="run-order">—</dd></div>
               <div><dt>Trials per run</dt><dd id="run-trials">—</dd></div>
+              <div id="run-cpu-field"><dt>Per CPU second</dt><dd id="run-cpu-delta">—</dd></div>
             </dl>
             <div class="source-links">
               <a id="legacy-source" href="#">Legacy summary <span aria-hidden="true">↗</span></a>
@@ -309,18 +309,23 @@
         <div class="claim-grid" aria-label="Interpretation limits">
           <article class="claim claim-supported">
             <span>Supported</span>
-            <h2>The test reproduced the method</h2>
-            <p>The local test measures the same workload with the same allocator split, and its effects are as small as the effects in the Redis case study. On the bare-metal node, the small positive effect occurs with background release on at 16 MiB/s.</p>
+            <h2>The release-on result reproduces</h2>
+            <p>In the correction run all four pairs favor Temeraire, at +0.401% raw and +0.474% per CPU second. Both 95% intervals exclude zero, and both contain the paper's +0.44%. This holds in raw throughput and in the unit the paper uses.</p>
+          </article>
+          <article class="claim claim-supported">
+            <span>Measured</span>
+            <h2>CPU normalization changes little here</h2>
+            <p>The two units differ by less than 0.1 percentage points. Redis 6.0.9 runs commands on one thread and the benchmark keeps that thread busy, so each block held 98 to 99.7 percent of one core. Do not carry this finding over to a multithreaded application.</p>
           </article>
           <article class="claim claim-limited">
             <span>Not supported</span>
-            <h2>One release setting is not a stable result</h2>
-            <p>Release-off gives a negative median on the bare-metal node. The rates of 64 MiB/s and 256 MiB/s give negative medians. The paper does not state its release rate, so 16 MiB/s is a local parameter.</p>
+            <h2>Release-off stays unresolved</h2>
+            <p>Two independent four-pair samples give -0.34% and +0.037%, with intervals that overlap almost completely and cover zero. The condition needs more pairs. The paper does not state its release rate either, so 16 MiB/s is a local parameter.</p>
           </article>
           <article class="claim claim-limited">
             <span>Not supported</span>
             <h2>The test did not reproduce the fleet result</h2>
-            <p>The test hardware, kernel, workloads, telemetry, and allocator environment differ from the Google fleet.</p>
+            <p>The test hardware, kernel, workloads, telemetry, and allocator environment differ from the Google fleet. The paper ran Redis on Skylake Xeons; node85 has an Ice Lake part.</p>
           </article>
         </div>
       </section>

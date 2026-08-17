@@ -1,0 +1,61 @@
+launch_id=rerun-remaining-pairs
+started_utc=2026-08-04T17:09:36Z
+working_directory=/var/tmp/temeraire-costa-20260716
+command=/var/tmp/temeraire-costa-20260716/scripts/run_rerun_remaining.sh 
+=== sequential pair 5 starting 2026-08-04T17:09:36Z ===
+Wrote /var/tmp/temeraire-costa-20260716/results/raw/system-info/20260804T170936Z.txt
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260804T170937Z-legacy-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260804T181725Z-temeraire-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260804T192535Z-legacy-paper-release-on
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260804T203349Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /var/tmp/temeraire-costa-20260716/results/raw/paper-closer/20260804T170936Z
+=== sequential pair 5 done 2026-08-04T21:41:49Z ===
+=== sequential pair 6 starting 2026-08-04T21:41:49Z ===
+Wrote /var/tmp/temeraire-costa-20260716/results/raw/system-info/20260804T214149Z.txt
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260804T214149Z-temeraire-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260804T224958Z-legacy-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260804T235813Z-temeraire-paper-release-on
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T010617Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /var/tmp/temeraire-costa-20260716/results/raw/paper-closer/20260804T214149Z
+=== sequential pair 6 done 2026-08-05T02:14:47Z ===
+=== sequential pair 7 starting 2026-08-05T02:14:47Z ===
+Wrote /var/tmp/temeraire-costa-20260716/results/raw/system-info/20260805T021447Z.txt
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T021448Z-legacy-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T032329Z-temeraire-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T043206Z-legacy-paper-release-on
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T054059Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /var/tmp/temeraire-costa-20260716/results/raw/paper-closer/20260805T021447Z
+=== sequential pair 7 done 2026-08-05T06:49:33Z ===
+=== sequential pair 8 starting 2026-08-05T06:49:33Z ===
+Wrote /var/tmp/temeraire-costa-20260716/results/raw/system-info/20260805T064933Z.txt
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T064933Z-temeraire-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T075810Z-legacy-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T090720Z-temeraire-paper-release-on
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T101517Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /var/tmp/temeraire-costa-20260716/results/raw/paper-closer/20260805T064933Z
+=== sequential pair 8 done 2026-08-05T11:23:31Z ===
+=== combined pair 2 starting 2026-08-05T11:23:31Z ===
+Wrote /var/tmp/temeraire-costa-20260716/results/raw/system-info/20260805T112331Z.txt
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T112331Z-temeraire-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T152954Z-legacy-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T193815Z-temeraire-paper-release-on
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260805T234410Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /var/tmp/temeraire-costa-20260716/results/raw/paper-closer/20260805T112331Z
+=== combined pair 2 done 2026-08-06T03:49:53Z ===
+=== combined pair 3 starting 2026-08-06T03:49:53Z ===
+Wrote /var/tmp/temeraire-costa-20260716/results/raw/system-info/20260806T034953Z.txt
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260806T034953Z-legacy-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260806T075829Z-temeraire-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260806T120354Z-legacy-paper-release-on
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260806T160930Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /var/tmp/temeraire-costa-20260716/results/raw/paper-closer/20260806T034953Z
+=== combined pair 3 done 2026-08-06T20:15:52Z ===
+=== combined pair 4 starting 2026-08-06T20:15:52Z ===
+Wrote /var/tmp/temeraire-costa-20260716/results/raw/system-info/20260806T201552Z.txt
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260806T201552Z-temeraire-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260807T002139Z-legacy-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260807T042934Z-temeraire-paper-release-on
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260807T083614Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /var/tmp/temeraire-costa-20260716/results/raw/paper-closer/20260806T201552Z
+=== combined pair 4 done 2026-08-07T12:49:03Z ===
+=== all remaining pairs complete 2026-08-07T12:49:03Z ===

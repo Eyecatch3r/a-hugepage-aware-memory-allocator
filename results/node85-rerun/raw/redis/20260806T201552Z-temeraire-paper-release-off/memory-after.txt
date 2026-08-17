@@ -1,0 +1,120 @@
+allocator=temeraire
+allocator_note=paper-era public google/tcmalloc build using the hugepage-aware Temeraire path
+run_label=paper-release-off
+timestamp_utc=20260807T002139Z
+pid=1856389
+port=6380
+trials=2000
+requests_per_trial=1000000
+clients=50
+pipeline=16
+numa_node=0
+snapshot_every_trials=250
+workload=combined
+trial_retries=0
+background_release_enabled=0
+background_release_rate_bps=unset
+build_exact_llvm=0
+llvm_ref_requested=unknown
+
+## status
+VmSize:	   65456 kB
+VmHWM:	   38352 kB
+VmRSS:	   37940 kB
+RssAnon:	   33172 kB
+RssFile:	    4768 kB
+
+## cpu
+clk_tck=100
+proc_utime_ticks=1058472
+proc_stime_ticks=413542
+proc_cutime_ticks=0
+proc_cstime_ticks=0
+proc_cpu_seconds=14720.140000
+used_cpu_sys=4135.421037
+used_cpu_user=10584.726508
+used_cpu_sys_children=0.000000
+used_cpu_user_children=0.000000
+nproc_online=48
+
+## info memory
+# Memory
+used_memory:21088424
+used_memory_human:20.11M
+used_memory_rss:37695488
+used_memory_rss_human:35.95M
+used_memory_peak:24434088
+used_memory_peak_human:23.30M
+used_memory_peak_perc:86.31%
+used_memory_overhead:876608
+used_memory_startup:876304
+used_memory_dataset:20211816
+used_memory_dataset_perc:100.00%
+allocator_allocated:24047984
+allocator_active:37655552
+allocator_resident:37655552
+total_system_memory:201942056960
+total_system_memory_human:188.07G
+used_memory_lua:46080
+used_memory_lua_human:45.00K
+used_memory_scripts:232
+used_memory_scripts_human:232B
+number_of_cached_scripts:1
+maxmemory:0
+maxmemory_human:0B
+maxmemory_policy:noeviction
+allocator_frag_ratio:1.57
+allocator_frag_bytes:13607568
+allocator_rss_ratio:1.00
+allocator_rss_bytes:0
+rss_overhead_ratio:1.00
+rss_overhead_bytes:39936
+mem_fragmentation_ratio:1.57
+mem_fragmentation_bytes:13647504
+mem_not_counted_for_evict:0
+mem_replication_backlog:0
+mem_clients_slaves:0
+mem_clients_normal:0
+mem_aof_buffer:0
+mem_allocator:libc
+active_defrag_running:0
+lazyfree_pending_objects:0
+
+## tcmalloc stats
+Stats not supported for the current allocator
+## smaps_rollup
+00400000-7ffcdc7cc000 ---p 00000000 00:00 0                              [rollup]
+Rss:               37940 kB
+Pss:               36001 kB
+Pss_Dirty:         33172 kB
+Pss_Anon:          33172 kB
+Pss_File:           2829 kB
+Pss_Shmem:             0 kB
+Shared_Clean:       2072 kB
+Shared_Dirty:          0 kB
+Private_Clean:      2696 kB
+Private_Dirty:     33172 kB
+Referenced:        37940 kB
+Anonymous:         33172 kB
+KSM:                   0 kB
+LazyFree:              0 kB
+AnonHugePages:     28672 kB
+ShmemPmdMapped:        0 kB
+FilePmdMapped:         0 kB
+Shared_Hugetlb:        0 kB
+Private_Hugetlb:       0 kB
+Swap:                  0 kB
+SwapPss:               0 kB
+Locked:                0 kB
+
+## thp_state
+AnonHugePages:     28672 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+[always] madvise never
+always defer defer+madvise [madvise] never
+511

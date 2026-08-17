@@ -23,30 +23,50 @@ def write_run(
     lpush: list[float],
     lrange: list[float],
     release_rate_bps: int = 16_777_216,
+    workload: str = "sequential",
+    cpu_seconds: float | None = None,
 ) -> None:
     run = redis_dir / f"{timestamp}-{allocator}-paper-release-{release_mode}"
     run.mkdir(parents=True)
+    combined = workload == "combined"
     with (run / "trials.csv").open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
         writer.writerow(("trial", "operation", "requests", "rps"))
         for trial, (lpush_rate, lrange_rate) in enumerate(zip(lpush, lrange), 1):
-            writer.writerow((trial, "lpush5", 1_000, lpush_rate))
-            writer.writerow((trial, "lrange5", 1_000, lrange_rate))
-            (run / f"trial-{trial:04d}-lpush.csv").write_text(
-                f'"lpush","{lpush_rate}"\n', encoding="utf-8"
-            )
-            (run / f"trial-{trial:04d}-lrange.csv").write_text(
-                f'"lrange","{lrange_rate}"\n', encoding="utf-8"
-            )
+            if combined:
+                writer.writerow((trial, "pushread5", 1_000, lpush_rate))
+                (run / f"trial-{trial:04d}-pushread.csv").write_text(
+                    f'"eval","{lpush_rate}"\n', encoding="utf-8"
+                )
+            else:
+                writer.writerow((trial, "lpush5", 1_000, lpush_rate))
+                writer.writerow((trial, "lrange5", 1_000, lrange_rate))
+                (run / f"trial-{trial:04d}-lpush.csv").write_text(
+                    f'"lpush","{lpush_rate}"\n', encoding="utf-8"
+                )
+                (run / f"trial-{trial:04d}-lrange.csv").write_text(
+                    f'"lrange","{lrange_rate}"\n', encoding="utf-8"
+                )
             (run / f"memory-sample-{trial:04d}.txt").write_text(
                 "AnonHugePages: 2048 kB\n", encoding="utf-8"
             )
-    (run / "summary.csv").write_text(
-        "operation,mean_rps,trials\n"
-        f"lpush5,{sum(lpush) / len(lpush):.6f},{len(lpush)}\n"
-        f"lrange5,{sum(lrange) / len(lrange):.6f},{len(lrange)}\n",
-        encoding="utf-8",
-    )
+    if combined:
+        (run / "summary.csv").write_text(
+            "operation,mean_rps,trials\n"
+            f"pushread5,{sum(lpush) / len(lpush):.6f},{len(lpush)}\n",
+            encoding="utf-8",
+        )
+    else:
+        (run / "summary.csv").write_text(
+            "operation,mean_rps,trials\n"
+            f"lpush5,{sum(lpush) / len(lpush):.6f},{len(lpush)}\n"
+            f"lrange5,{sum(lrange) / len(lrange):.6f},{len(lrange)}\n",
+            encoding="utf-8",
+        )
+    after = "AnonHugePages: 2048 kB\n"
+    if cpu_seconds is not None:
+        after += f"used_cpu_user={cpu_seconds / 2:.6f}\nused_cpu_sys={cpu_seconds / 2:.6f}\n"
+    (run / "memory-after.txt").write_text(after, encoding="utf-8")
     release_line = ""
     if release_mode == "on":
         release_line = (
@@ -60,11 +80,11 @@ def write_run(
         "[always] madvise never\n", encoding="utf-8"
     )
     (run / "memory-before.txt").write_text(
-        f"allocator={allocator}\nnuma_node=0\n", encoding="utf-8"
+        f"allocator={allocator}\nnuma_node=0\nworkload={workload}\n", encoding="utf-8"
     )
 
 
-def create_dataset(root: Path) -> Path:
+def create_dataset(root: Path, workload: str = "sequential", cpu: dict[str, float] | None = None) -> Path:
     raw = root / "raw"
     manifest_dir = raw / "paper-closer" / "20260101T000000Z"
     manifest_dir.mkdir(parents=True)
@@ -98,10 +118,18 @@ def create_dataset(root: Path) -> Path:
         encoding="utf-8",
     )
     redis = raw / "redis"
-    write_run(redis, "20260101T000000Z", "legacy", "off", [80, 80], [120, 120])
-    write_run(redis, "20260101T000100Z", "temeraire", "off", [84, 84], [126, 126])
-    write_run(redis, "20260101T000200Z", "legacy", "on", [80, 80], [120, 120])
-    write_run(redis, "20260101T000300Z", "temeraire", "on", [88, 88], [132, 132])
+    cpu = cpu or {}
+    plan = [
+        ("20260101T000000Z", "legacy", "off", [80, 80], [120, 120], "legacy-off"),
+        ("20260101T000100Z", "temeraire", "off", [84, 84], [126, 126], "temeraire-off"),
+        ("20260101T000200Z", "legacy", "on", [80, 80], [120, 120], "legacy-on"),
+        ("20260101T000300Z", "temeraire", "on", [88, 88], [132, 132], "temeraire-on"),
+    ]
+    for stamp, allocator, mode, lpush, lrange, key in plan:
+        write_run(
+            redis, stamp, allocator, mode, lpush, lrange,
+            workload=workload, cpu_seconds=cpu.get(key),
+        )
     return raw
 
 
@@ -235,6 +263,196 @@ class DatasetAuditTests(unittest.TestCase):
 
             with self.assertRaisesRegex(AuditError, "actual allocator order mismatch"):
                 audit_dataset(config)
+
+
+class WorkloadTests(unittest.TestCase):
+    def config(self, raw: Path) -> AuditConfig:
+        return AuditConfig(
+            raw_dir=raw, expected_trials=2, expected_requests=1_000,
+            expected_pairs=1, release_rate_bps=16_777_216,
+        )
+
+    def test_combined_workload_uses_the_single_recorded_rate(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary), workload="combined")
+
+            report = audit_dataset(self.config(raw))
+
+        self.assertEqual(report.workloads, ("combined",))
+        # One operation per trial, so half the rows and files of the sequential form.
+        self.assertEqual(report.total_trial_rows, 8)
+        self.assertEqual(report.total_raw_trial_files, 8)
+        block = report.pairs[0].blocks[0]
+        self.assertIsNone(block.lpush_mean_rps)
+        self.assertEqual(block.combined_rps, 80)
+        # Temeraire 84 against legacy 80 is +5%, with no harmonic mean involved.
+        self.assertAlmostEqual(report.pairs[0].release_off_delta_percent, 5.0)
+
+    def test_sequential_summary_is_rejected_for_a_combined_block(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary), workload="combined")
+            before = raw / "redis" / "20260101T000000Z-legacy-paper-release-off" / "memory-before.txt"
+            before.write_text("allocator=legacy\nworkload=sequential\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(AuditError, "expected 4 trial rows"):
+                audit_dataset(self.config(raw))
+
+    def test_workload_filter_selects_matching_manifests(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary), workload="combined")
+            manifest = raw / "paper-closer" / "20260101T000000Z" / "manifest.txt"
+            manifest.write_text(
+                manifest.read_text(encoding="utf-8") + "workload=combined\n",
+                encoding="utf-8",
+            )
+
+            wanted = AuditConfig(
+                raw_dir=raw, expected_trials=2, expected_requests=1_000,
+                expected_pairs=1, workload="combined",
+            )
+            self.assertEqual(audit_dataset(wanted).workloads, ("combined",))
+
+            # A manifest without the key counts as sequential, so asking for the
+            # other reading must find nothing rather than audit the wrong blocks.
+            other = AuditConfig(
+                raw_dir=raw, expected_trials=2, expected_requests=1_000,
+                expected_pairs=1, workload="sequential",
+            )
+            with self.assertRaisesRegex(AuditError, "expected 1 full manifests, got 0"):
+                audit_dataset(other)
+
+    def test_unknown_workload_stops_the_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            before = raw / "redis" / "20260101T000000Z-legacy-paper-release-off" / "memory-before.txt"
+            before.write_text("allocator=legacy\nworkload=interleaved\n", encoding="utf-8")
+
+            with self.assertRaisesRegex(AuditError, "unknown workload"):
+                audit_dataset(self.config(raw))
+
+
+class CpuNormalizationTests(unittest.TestCase):
+    def config(self, raw: Path) -> AuditConfig:
+        return AuditConfig(
+            raw_dir=raw, expected_trials=2, expected_requests=1_000,
+            expected_pairs=1, release_rate_bps=16_777_216,
+        )
+
+    def test_normalized_delta_divides_requests_by_cpu_seconds(self) -> None:
+        # Both allocators serve the same request count. Temeraire is 5% faster in
+        # raw throughput but burns 10% more CPU, so the normalized delta is
+        # negative even though the unnormalized one is positive.
+        cpu = {
+            "legacy-off": 100.0, "temeraire-off": 110.0,
+            "legacy-on": 100.0, "temeraire-on": 110.0,
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary), cpu=cpu)
+
+            report = audit_dataset(self.config(raw))
+
+        pair = report.pairs[0]
+        self.assertAlmostEqual(pair.release_off_delta_percent, 5.0)
+        expected = 100.0 * ((1 / 110.0) / (1 / 100.0) - 1.0)
+        self.assertAlmostEqual(pair.release_off_normalized_delta_percent, expected)
+        self.assertLess(pair.release_off_normalized_delta_percent, 0.0)
+        self.assertIsNotNone(report.release_off_normalized)
+
+    def test_summary_is_withheld_when_any_pair_lacks_cpu_time(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary), cpu={"legacy-off": 100.0})
+
+            report = audit_dataset(self.config(raw))
+
+        self.assertIsNone(report.release_off_normalized)
+        self.assertIsNone(report.pairs[0].release_off_normalized_delta_percent)
+
+    def test_blocks_without_cpu_time_still_audit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+
+            report = audit_dataset(self.config(raw))
+
+        self.assertIsNone(report.release_off_normalized)
+        self.assertAlmostEqual(report.pairs[0].release_off_delta_percent, 5.0)
+
+
+class SkipRawFilesTests(unittest.TestCase):
+    """The per-trial files live in the archives, not in Git.
+
+    A clone must still be able to check every reported delta, so the audit can
+    recompute the block means from trials.csv and leave the file count unchecked.
+    """
+
+    def config(self, raw: Path, verify_raw_files: bool) -> AuditConfig:
+        return AuditConfig(
+            raw_dir=raw, expected_trials=2, expected_requests=1_000,
+            expected_pairs=1, verify_raw_files=verify_raw_files,
+        )
+
+    def test_missing_trial_files_still_produce_the_same_deltas(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            with_files = audit_dataset(self.config(raw, True))
+            for path in raw.glob("redis/*/trial-*.csv"):
+                path.unlink()
+
+            without_files = audit_dataset(self.config(raw, False))
+
+        self.assertAlmostEqual(
+            without_files.pairs[0].release_off_delta_percent,
+            with_files.pairs[0].release_off_delta_percent,
+        )
+        self.assertAlmostEqual(
+            without_files.pairs[0].release_on_delta_percent,
+            with_files.pairs[0].release_on_delta_percent,
+        )
+        self.assertEqual(without_files.total_raw_trial_files, 0)
+        self.assertTrue(
+            any("Per-trial CSV files were not checked" in w for w in without_files.warnings),
+            without_files.warnings,
+        )
+
+    def test_the_default_still_requires_the_trial_files(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            next(raw.glob("redis/*/trial-0001-lpush.csv")).unlink()
+
+            with self.assertRaisesRegex(AuditError, "raw trial file count mismatch"):
+                audit_dataset(self.config(raw, True))
+
+
+class RetryReportingTests(unittest.TestCase):
+    def test_a_retried_block_raises_a_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            after = raw / "redis" / "20260101T000000Z-legacy-paper-release-off" / "memory-after.txt"
+            after.write_text(
+                after.read_text(encoding="utf-8") + "trial_retries=3\n", encoding="utf-8"
+            )
+            config = AuditConfig(
+                raw_dir=raw, expected_trials=2, expected_requests=1_000, expected_pairs=1,
+            )
+
+            report = audit_dataset(config)
+
+        blocks = {b.run: b.trial_retries for pair in report.pairs for b in pair.blocks}
+        self.assertEqual(blocks["20260101T000000Z-legacy-paper-release-off"], 3)
+        self.assertTrue(
+            any("failed and were repeated" in w for w in report.warnings),
+            report.warnings,
+        )
+
+    def test_a_clean_run_raises_no_retry_warning(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            raw = create_dataset(Path(temporary))
+            config = AuditConfig(
+                raw_dir=raw, expected_trials=2, expected_requests=1_000, expected_pairs=1,
+            )
+
+            report = audit_dataset(config)
+
+        self.assertFalse(any("failed and were repeated" in w for w in report.warnings))
 
 
 class SensitivityAuditTests(unittest.TestCase):

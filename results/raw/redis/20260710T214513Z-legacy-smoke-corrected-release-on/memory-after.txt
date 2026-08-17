@@ -1,0 +1,105 @@
+allocator=legacy
+allocator_note=paper-era public google/tcmalloc build with want_no_hpaa linked to force the legacy pageheap path
+run_label=smoke-corrected-release-on
+timestamp_utc=20260710T214514Z
+pid=15
+port=6380
+trials=2
+requests_per_trial=1000
+clients=50
+pipeline=16
+numa_node=none
+snapshot_every_trials=250
+background_release_enabled=1
+background_release_rate_bps=16777216
+build_exact_llvm=1
+llvm_ref_requested=cd442157cff4aad209ae532cbf031abbe10bc1df
+
+## status
+VmSize:	  100820 kB
+VmHWM:	    6384 kB
+VmRSS:	    6384 kB
+RssAnon:	    2212 kB
+RssFile:	    4172 kB
+
+## info memory
+# Memory
+used_memory:962640
+used_memory_human:940.08K
+used_memory_rss:6422528
+used_memory_rss_human:6.12M
+used_memory_peak:3431904
+used_memory_peak_human:3.27M
+used_memory_peak_perc:28.05%
+used_memory_overhead:876328
+used_memory_startup:876256
+used_memory_dataset:86312
+used_memory_dataset_perc:99.92%
+allocator_allocated:912232
+allocator_active:6384640
+allocator_resident:6384640
+total_system_memory:16726953984
+total_system_memory_human:15.58G
+used_memory_lua:37888
+used_memory_lua_human:37.00K
+used_memory_scripts:0
+used_memory_scripts_human:0B
+number_of_cached_scripts:0
+maxmemory:0
+maxmemory_human:0B
+maxmemory_policy:noeviction
+allocator_frag_ratio:7.00
+allocator_frag_bytes:5472408
+allocator_rss_ratio:1.00
+allocator_rss_bytes:0
+rss_overhead_ratio:1.01
+rss_overhead_bytes:37888
+mem_fragmentation_ratio:7.04
+mem_fragmentation_bytes:5510296
+mem_not_counted_for_evict:0
+mem_replication_backlog:0
+mem_clients_slaves:0
+mem_clients_normal:0
+mem_aof_buffer:0
+mem_allocator:libc
+active_defrag_running:0
+lazyfree_pending_objects:0
+
+## tcmalloc stats
+Stats not supported for the current allocator
+## smaps_rollup
+00400000-7ffe900b1000 ---p 00000000 00:00 0                              [rollup]
+Rss:                6416 kB
+Pss:                5223 kB
+Pss_Dirty:          2220 kB
+Pss_Anon:           2220 kB
+Pss_File:           3003 kB
+Pss_Shmem:             0 kB
+Shared_Clean:       1580 kB
+Shared_Dirty:          0 kB
+Private_Clean:      2616 kB
+Private_Dirty:      2220 kB
+Referenced:         6416 kB
+Anonymous:          2220 kB
+KSM:                   0 kB
+LazyFree:              0 kB
+AnonHugePages:         0 kB
+ShmemPmdMapped:        0 kB
+FilePmdMapped:         0 kB
+Shared_Hugetlb:        0 kB
+Private_Hugetlb:       0 kB
+Swap:                  0 kB
+SwapPss:               0 kB
+Locked:                0 kB
+
+## thp_state
+AnonHugePages:         0 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+always [madvise] never
+always defer defer+madvise [madvise] never
+511

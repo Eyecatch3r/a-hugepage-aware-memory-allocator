@@ -1,0 +1,120 @@
+allocator=legacy
+allocator_note=paper-era public google/tcmalloc build with want_no_hpaa linked to force the legacy pageheap path
+run_label=paper-release-off
+timestamp_utc=20260804T181725Z
+pid=1193168
+port=6380
+trials=2000
+requests_per_trial=1000000
+clients=50
+pipeline=16
+numa_node=0
+snapshot_every_trials=250
+workload=sequential
+trial_retries=0
+background_release_enabled=0
+background_release_rate_bps=unset
+build_exact_llvm=0
+llvm_ref_requested=unknown
+
+## status
+VmSize:	   55980 kB
+VmHWM:	   29000 kB
+VmRSS:	   28512 kB
+RssAnon:	   23692 kB
+RssFile:	    4820 kB
+
+## cpu
+clk_tck=100
+proc_utime_ticks=299604
+proc_stime_ticks=102630
+proc_cutime_ticks=0
+proc_cstime_ticks=0
+proc_cpu_seconds=4022.340000
+used_cpu_sys=1026.302689
+used_cpu_user=2996.049266
+used_cpu_sys_children=0.000000
+used_cpu_user_children=0.000000
+nproc_online=48
+
+## info memory
+# Memory
+used_memory:21101472
+used_memory_human:20.12M
+used_memory_rss:28676096
+used_memory_rss_human:27.35M
+used_memory_peak:23591440
+used_memory_peak_human:22.50M
+used_memory_peak_perc:89.45%
+used_memory_overhead:876376
+used_memory_startup:876304
+used_memory_dataset:20225096
+used_memory_dataset_perc:100.00%
+allocator_allocated:21051064
+allocator_active:28638208
+allocator_resident:28638208
+total_system_memory:201942056960
+total_system_memory_human:188.07G
+used_memory_lua:37888
+used_memory_lua_human:37.00K
+used_memory_scripts:0
+used_memory_scripts_human:0B
+number_of_cached_scripts:0
+maxmemory:0
+maxmemory_human:0B
+maxmemory_policy:noeviction
+allocator_frag_ratio:1.36
+allocator_frag_bytes:7587144
+allocator_rss_ratio:1.00
+allocator_rss_bytes:0
+rss_overhead_ratio:1.00
+rss_overhead_bytes:37888
+mem_fragmentation_ratio:1.36
+mem_fragmentation_bytes:7625032
+mem_not_counted_for_evict:0
+mem_replication_backlog:0
+mem_clients_slaves:0
+mem_clients_normal:0
+mem_aof_buffer:0
+mem_allocator:libc
+active_defrag_running:0
+lazyfree_pending_objects:0
+
+## tcmalloc stats
+Stats not supported for the current allocator
+## smaps_rollup
+00400000-7ffca6ebd000 ---p 00000000 00:00 0                              [rollup]
+Rss:               28512 kB
+Pss:               26526 kB
+Pss_Dirty:         23692 kB
+Pss_Anon:          23692 kB
+Pss_File:           2834 kB
+Pss_Shmem:             0 kB
+Shared_Clean:       2120 kB
+Shared_Dirty:          0 kB
+Private_Clean:      2700 kB
+Private_Dirty:     23692 kB
+Referenced:        28512 kB
+Anonymous:         23692 kB
+KSM:                   0 kB
+LazyFree:              0 kB
+AnonHugePages:     18432 kB
+ShmemPmdMapped:        0 kB
+FilePmdMapped:         0 kB
+Shared_Hugetlb:        0 kB
+Private_Hugetlb:       0 kB
+Swap:                  0 kB
+SwapPss:               0 kB
+Locked:                0 kB
+
+## thp_state
+AnonHugePages:     18432 kB
+ShmemHugePages:        0 kB
+FileHugePages:         0 kB
+HugePages_Total:       0
+HugePages_Free:        0
+HugePages_Rsvd:        0
+HugePages_Surp:        0
+[always] madvise never
+always defer defer+madvise [madvise] never
+511

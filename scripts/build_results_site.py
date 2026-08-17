@@ -15,8 +15,10 @@ from typing import Iterable
 
 try:
     from . import aggregate_paper_closer_results as aggregate
+    from . import trial_bundles
 except ImportError:  # pragma: no cover - direct script execution
     import aggregate_paper_closer_results as aggregate
+    import trial_bundles
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -25,6 +27,12 @@ WSL_RAW_ROOT = ROOT / "results/raw"
 BAREMETAL_HISTORICAL_RAW_ROOT = ROOT / "results/node85-import/raw"
 BAREMETAL_SENSITIVITY_RAW_ROOT = ROOT / "results/node85-sensitivity-audit/raw"
 BAREMETAL_AUDIT = ROOT / "results/processed/node85-audit/audit.json"
+CORRECTION_RAW_ROOT = ROOT / "results/node85-rerun/raw"
+CORRECTION_AUDITS = {
+    "sequential": ROOT / "results/processed/node85-rerun-sequential/audit.json",
+    "combined": ROOT / "results/processed/node85-rerun-combined/audit.json",
+}
+REQUESTS_PER_TRIAL = 1_000_000
 NUMBER_PATTERN = re.compile(r"^([A-Za-z]+):\s+(\d+)\s+kB$")
 TRIAL_PATTERN = re.compile(r"memory-sample-(\d+)$")
 
@@ -135,6 +143,8 @@ def sample_paths(paths: list[Path], maximum: int = 128) -> list[Path]:
 
 
 def read_trial_values(run_dir: Path, operation: str) -> list[float]:
+    # The per-trial files ship as one bundle per block, so unpack before reading.
+    trial_bundles.ensure_extracted(run_dir)
     values: list[float] = []
     paths = sample_paths(sorted(run_dir.glob(f"trial-*-{operation}.csv")))
     for path in paths:
@@ -172,39 +182,103 @@ def read_memory_series(run_dir: Path, trial_count: int) -> list[dict[str, object
     ]
 
 
+def read_summary_for(path: Path, operations: tuple[str, ...]) -> dict[str, float]:
+    """Read summary.csv and require exactly the operations the workload writes.
+
+    aggregate.read_summary handles the sequential pair only, so the combined
+    workload needs its own reader.
+    """
+    with path.open(newline="", encoding="utf-8") as handle:
+        rows = {row["operation"]: float(row["mean_rps"]) for row in csv.DictReader(handle)}
+    missing = set(operations) - rows.keys()
+    if missing:
+        raise ValueError(f"{path} is missing operations: {', '.join(sorted(missing))}")
+    return rows
+
+
+def block_workload(run_dir: Path) -> str:
+    """Return the workload a block used.
+
+    Blocks recorded before the workload became selectable carry no key, and all
+    of those used the sequential form.
+    """
+    path = run_dir / "memory-before.txt"
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("workload="):
+                return line.split("=", 1)[1].strip()
+    return "sequential"
+
+
+def block_cpu_seconds(run_dir: Path) -> float | None:
+    """Return the Redis CPU seconds for a block, or None if it was not recorded."""
+    path = run_dir / "memory-after.txt"
+    if not path.is_file():
+        return None
+    values: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("used_cpu_"):
+            key, _, value = line.partition("=")
+            values[key.strip()] = value.strip()
+    if "used_cpu_user" not in values or "used_cpu_sys" not in values:
+        return None
+    return float(values["used_cpu_user"]) + float(values["used_cpu_sys"])
+
+
 def read_run(run_dir: Path, allocator: str) -> dict[str, object]:
+    """Read one allocator block into the shape the site renders.
+
+    The sequential workload records two operation rates that are joined by a
+    harmonic mean. The combined workload records one rate per trial, so it has
+    no per-operation breakdown and needs no aggregation.
+    """
     summary_path = run_dir / "summary.csv"
-    summary = aggregate.read_summary(summary_path)
+    workload = block_workload(run_dir)
+    operations = ("pushread5",) if workload == "combined" else ("lpush5", "lrange5")
+    summary = read_summary_for(summary_path, operations)
     trial_count = read_trial_count(summary_path)
-    lpush_values = read_trial_values(run_dir, "lpush")
-    lrange_values = read_trial_values(run_dir, "lrange")
-    if len(lpush_values) != len(lrange_values):
-        raise ValueError(f"Mismatched LPUSH and LRANGE trial counts in {run_dir}")
 
-    distributions: dict[str, object] = {}
-    if lpush_values:
-        combined_values = [
-            harmonic_mean(lpush, lrange)
-            for lpush, lrange in zip(lpush_values, lrange_values, strict=True)
-        ]
-        distributions = {
-            "combined": summarise_values(combined_values),
-            "lpush": summarise_values(lpush_values),
-            "lrange": summarise_values(lrange_values),
+    if workload == "combined":
+        values = read_trial_values(run_dir, "pushread")
+        throughput = {"combined": rounded(summary["pushread5"])}
+        distributions = {"combined": summarise_values(values)} if values else {}
+        sample_size = len(values)
+    else:
+        lpush_values = read_trial_values(run_dir, "lpush")
+        lrange_values = read_trial_values(run_dir, "lrange")
+        if len(lpush_values) != len(lrange_values):
+            raise ValueError(f"Mismatched LPUSH and LRANGE trial counts in {run_dir}")
+        throughput = {
+            "combined": rounded(harmonic_mean(summary["lpush5"], summary["lrange5"])),
+            "lpush": rounded(summary["lpush5"]),
+            "lrange": rounded(summary["lrange5"]),
         }
+        distributions = {}
+        if lpush_values:
+            combined_values = [
+                harmonic_mean(lpush, lrange)
+                for lpush, lrange in zip(lpush_values, lrange_values, strict=True)
+            ]
+            distributions = {
+                "combined": summarise_values(combined_values),
+                "lpush": summarise_values(lpush_values),
+                "lrange": summarise_values(lrange_values),
+            }
+        sample_size = len(lpush_values)
 
+    cpu_seconds = block_cpu_seconds(run_dir)
+    requests = trial_count * REQUESTS_PER_TRIAL * len(operations)
     return {
         "id": run_dir.name,
         "allocator": allocator,
         "path": run_dir.relative_to(ROOT).as_posix() if run_dir.is_relative_to(ROOT) else run_dir.as_posix(),
         "timestamp": aggregate.run_timestamp(run_dir),
+        "workload": workload,
         "trials": trial_count,
-        "distributionSampleSize": len(lpush_values),
-        "throughput": {
-            "combined": rounded(harmonic_mean(summary["lpush5"], summary["lrange5"])),
-            "lpush": rounded(summary["lpush5"]),
-            "lrange": rounded(summary["lrange5"]),
-        },
+        "distributionSampleSize": sample_size,
+        "throughput": throughput,
+        "cpuSeconds": None if cpu_seconds is None else rounded(cpu_seconds),
+        "requestsPerCpuSecond": None if cpu_seconds is None else rounded(requests / cpu_seconds),
         "distributions": distributions,
         "memory": read_memory_series(run_dir, trial_count),
     }
@@ -216,8 +290,18 @@ def metric_deltas(legacy: dict[str, object], temeraire: dict[str, object]) -> di
     assert isinstance(legacy_rates, dict) and isinstance(temeraire_rates, dict)
     return {
         metric: rounded(((float(temeraire_rates[metric]) / float(legacy_rates[metric])) - 1) * 100)
-        for metric in ("combined", "lpush", "lrange")
+        for metric in temeraire_rates
+        if metric in legacy_rates
     }
+
+
+def cpu_delta(legacy: dict[str, object], temeraire: dict[str, object]) -> float | int | None:
+    """Temeraire's change in requests per CPU second, the unit the paper reports."""
+    legacy_rate = legacy.get("requestsPerCpuSecond")
+    temeraire_rate = temeraire.get("requestsPerCpuSecond")
+    if legacy_rate is None or temeraire_rate is None:
+        return None
+    return rounded(((float(temeraire_rate) / float(legacy_rate)) - 1) * 100)
 
 
 def build_wsl_historical_pairs() -> list[dict[str, object]]:
@@ -268,6 +352,36 @@ def build_baremetal_historical_pairs() -> list[dict[str, object]]:
                 "legacy": legacy,
                 "temeraire": temeraire,
                 "deltaPercent": metric_deltas(legacy, temeraire),
+            })
+    return pairs
+
+
+def build_correction_pairs(workload: str) -> list[dict[str, object]]:
+    """Build the matched pairs of the August correction run for one workload."""
+    audit = json.loads(CORRECTION_AUDITS[workload].read_text(encoding="utf-8"))
+    pairs: list[dict[str, object]] = []
+    for audited_pair in audit["pairs"]:
+        run_number = int(audited_pair["balanced_run"])
+        order = "L first" if audited_pair["allocator_order"] == "legacy-first" else "T first"
+        blocks = audited_pair["blocks"]
+        for release_mode in ("off", "on"):
+            def block_for(allocator: str) -> dict[str, object]:
+                return next(
+                    block for block in blocks
+                    if block["allocator"] == allocator and block["release_mode"] == release_mode
+                )
+
+            legacy = read_run(CORRECTION_RAW_ROOT / "redis" / block_for("legacy")["run"], "legacy")
+            temeraire = read_run(CORRECTION_RAW_ROOT / "redis" / block_for("temeraire")["run"], "temeraire")
+            pairs.append({
+                "id": f"correction-{workload}-{run_number}-{release_mode}",
+                "family": f"pair {run_number}",
+                "releaseMode": release_mode,
+                "order": order,
+                "legacy": legacy,
+                "temeraire": temeraire,
+                "deltaPercent": metric_deltas(legacy, temeraire),
+                "deltaPerCpuSecond": cpu_delta(legacy, temeraire),
             })
     return pairs
 
@@ -361,7 +475,15 @@ def build_sensitivity_records(
     return records
 
 
-def methodology(scope: str) -> dict[str, object]:
+def methodology(scope: str, workload: str = "sequential") -> dict[str, object]:
+    if workload == "combined":
+        return {
+            "workload": "Redis 6.0.9 list operations",
+            "allocators": ["Legacy pageheap", "Temeraire"],
+            "operations": ["EVAL: push 5, read those 5"],
+            "aggregation": "One request performs both operations, so no aggregation is needed",
+            "scope": scope,
+        }
     return {
         "workload": "Redis 6.0.9 list operations",
         "allocators": ["Legacy pageheap", "Temeraire"],
@@ -373,17 +495,51 @@ def methodology(scope: str) -> dict[str, object]:
 
 def build_results_data() -> dict[str, object]:
     return {
-        "schemaVersion": 2,
+        "schemaVersion": 3,
         "generatedAt": datetime.now(timezone.utc).replace(microsecond=0).isoformat(),
-        "defaultEnvironment": "baremetal",
+        "defaultEnvironment": "correctionSequential",
         "environments": {
+            "correctionSequential": {
+                "id": "correctionSequential",
+                "label": "Correction run",
+                "shortLabel": "node85 · CPU recorded · sequential workload",
+                "methodology": methodology(
+                    "Native Debian 13 on node85, August 2026. Each block records the CPU "
+                    "time of the Redis server, so throughput is also reported in the unit "
+                    "the paper uses."
+                ),
+                "metrics": ["combined", "lpush", "lrange"],
+                "hasCpuRecord": True,
+                "outlier": None,
+                "historical": build_correction_pairs("sequential"),
+                "releaseSensitivity": [],
+            },
+            "correctionCombined": {
+                "id": "correctionCombined",
+                "label": "Correction run, EVAL",
+                "shortLabel": "node85 · one request pushes and reads",
+                "methodology": methodology(
+                    "Native Debian 13 on node85, August 2026. This reading of the paper's "
+                    "trial sentence costs 4.11 hours per block against 1.14, and it gives "
+                    "much wider intervals.",
+                    workload="combined",
+                ),
+                "metrics": ["combined"],
+                "hasCpuRecord": True,
+                "outlier": None,
+                "historical": build_correction_pairs("combined"),
+                "releaseSensitivity": [],
+            },
             "baremetal": {
                 "id": "baremetal",
-                "label": "Bare metal",
-                "shortLabel": "Native Debian 13 · node85",
+                "label": "First bare metal run",
+                "shortLabel": "Native Debian 13 · node85 · July 2026",
                 "methodology": methodology(
-                    "Native Debian 13 on node85. The test used no virtualization."
+                    "Native Debian 13 on node85, July 2026. The test used no "
+                    "virtualization and recorded no CPU time."
                 ),
+                "metrics": ["combined", "lpush", "lrange"],
+                "hasCpuRecord": False,
                 "outlier": None,
                 "historical": build_baremetal_historical_pairs(),
                 "releaseSensitivity": build_sensitivity_records(
@@ -398,6 +554,8 @@ def build_results_data() -> dict[str, object]:
                 "methodology": methodology(
                     "Docker container in WSL2. The container used the shared WSL2 kernel."
                 ),
+                "metrics": ["combined", "lpush", "lrange"],
+                "hasCpuRecord": False,
                 "outlier": {
                     "id": "balanced-4-on",
                     "label": "balanced 4, release on",
@@ -418,6 +576,40 @@ def build_results_data() -> dict[str, object]:
     }
 
 
+def require_complete(payload: dict[str, object]) -> None:
+    """Stop if an environment came out empty.
+
+    A missing result tree used to yield an environment with no pairs rather than
+    an error, so a rebuild could quietly ship a smaller bundle than the one in
+    version control. Every environment must have matched pairs, and the two that
+    carry a release-rate sweep must have its records.
+    """
+    environments = payload["environments"]
+    assert isinstance(environments, dict)
+    problems: list[str] = []
+    for name, environment in environments.items():
+        if not environment["historical"]:
+            problems.append(f"{name}: no matched pairs were found")
+        if name in {"baremetal", "wslDocker"} and not environment["releaseSensitivity"]:
+            problems.append(f"{name}: no release-rate records were found")
+        empty = [
+            pair["id"] for pair in environment["historical"]
+            if not pair["legacy"]["distributions"] or not pair["temeraire"]["distributions"]
+        ]
+        if empty:
+            problems.append(
+                f"{name}: {len(empty)} pairs have no trial distributions, "
+                f"starting at {empty[0]}"
+            )
+    if problems:
+        raise SystemExit(
+            "The result trees are incomplete, so the bundle would be smaller than "
+            "the one in version control:\n  " + "\n  ".join(problems)
+            + "\n\nThe per-trial CSV files are not in Git. Unpack the result "
+            "archives over results/ before rebuilding the bundle."
+        )
+
+
 def write_javascript_bundle(output: Path, payload: dict[str, object]) -> None:
     output.parent.mkdir(parents=True, exist_ok=True)
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
@@ -430,6 +622,7 @@ def main() -> None:
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT)
     args = parser.parse_args()
     payload = build_results_data()
+    require_complete(payload)
     write_javascript_bundle(args.output, payload)
     environments = payload["environments"]
     assert isinstance(environments, dict)

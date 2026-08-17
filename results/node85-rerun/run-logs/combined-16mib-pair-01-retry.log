@@ -1,0 +1,10 @@
+launch_id=combined-16mib-pair-01-retry
+started_utc=2026-08-03T13:56:18Z
+working_directory=/var/tmp/temeraire-costa-20260716
+command=/var/tmp/temeraire-costa-20260716/scripts/run_bare_metal_redis_experiment.sh --allocator-order balanced --balanced-run-number 1 
+Wrote /var/tmp/temeraire-costa-20260716/results/raw/system-info/20260803T135618Z.txt
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260803T135618Z-legacy-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260803T180425Z-temeraire-paper-release-off
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260803T221310Z-legacy-paper-release-on
+Wrote benchmark results to /var/tmp/temeraire-costa-20260716/results/raw/redis/20260804T021838Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /var/tmp/temeraire-costa-20260716/results/raw/paper-closer/20260803T135618Z

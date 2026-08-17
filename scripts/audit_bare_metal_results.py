@@ -23,11 +23,31 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Iterable
 
+try:
+    from . import trial_bundles
+except ImportError:  # pragma: no cover - direct script execution
+    import trial_bundles
 
-EXPECTED_OPERATIONS = ("lpush5", "lrange5")
+
+# The sequential workload records one row per operation and is collapsed with a
+# harmonic mean. The combined workload records a single rate that needs no
+# aggregation. A block declares which one it used in memory-before.txt.
+SEQUENTIAL_OPERATIONS = ("lpush5", "lrange5")
+COMBINED_OPERATIONS = ("pushread5",)
+EXPECTED_OPERATIONS = SEQUENTIAL_OPERATIONS
+OPERATION_SETS = {
+    "sequential": SEQUENTIAL_OPERATIONS,
+    "combined": COMBINED_OPERATIONS,
+}
 EXPECTED_LLVM_REF = "cd442157cff4aad209ae532cbf031abbe10bc1df"
 EXPECTED_TCMALLOC_REF = "8e534f50707469baac732559494559db95732e12"
 EXPECTED_REDIS_VERSION = "6.0.9"
+RAW_FILES_SKIPPED_WARNING = (
+    "Per-trial CSV files were not checked. Block means were recomputed from "
+    "trials.csv, which is enough to verify every reported delta, but the count "
+    "of raw files behind each mean was not confirmed. Run without "
+    "--skip-raw-files against an unpacked archive for the complete check."
+)
 T_CRITICAL_95 = {
     1: 12.706,
     2: 4.303,
@@ -57,6 +77,15 @@ class AuditConfig:
     expected_requests: int = 1_000_000
     expected_pairs: int = 4
     release_rate_bps: int = 16_777_216
+    # "any" audits every workload in the tree. Naming one restricts the audit to
+    # manifests that used it, so a tree holding both readings of the paper's
+    # trial sentence can be audited one reading at a time.
+    workload: str = "any"
+    # The per-trial CSV files are too numerous for version control and travel in
+    # the result archives instead. Without them the block means still recompute
+    # from trials.csv, so the reported deltas remain verifiable from a clone;
+    # only the count of raw files goes unchecked.
+    verify_raw_files: bool = True
     expected_llvm_ref: str = EXPECTED_LLVM_REF
     expected_tcmalloc_ref: str = EXPECTED_TCMALLOC_REF
     expected_redis_version: str = EXPECTED_REDIS_VERSION
@@ -67,13 +96,22 @@ class BlockResult:
     run: str
     allocator: str
     release_mode: str
-    lpush_mean_rps: float
-    lrange_mean_rps: float
+    workload: str
     combined_rps: float
     trial_rows: int
     raw_trial_files: int
     memory_samples: int
     release_confirmations: int
+    requests_total: int
+    # None for the combined workload, which records a single rate.
+    lpush_mean_rps: float | None = None
+    lrange_mean_rps: float | None = None
+    # None for blocks recorded before CPU capture existed.
+    cpu_seconds: float | None = None
+    requests_per_cpu_second: float | None = None
+    # Benchmark invocations that failed and were repeated. Surfaced as a warning
+    # so a retried block is never mistaken for a clean one.
+    trial_retries: int = 0
 
 
 @dataclass(frozen=True)
@@ -84,6 +122,10 @@ class PairResult:
     release_off_delta_percent: float
     release_on_delta_percent: float
     blocks: tuple[BlockResult, ...]
+    # Deltas in requests per CPU second, matching the paper's unit. None when
+    # the blocks predate CPU capture.
+    release_off_normalized_delta_percent: float | None = None
+    release_on_normalized_delta_percent: float | None = None
 
 
 @dataclass(frozen=True)
@@ -111,6 +153,9 @@ class AuditReport:
     environment: dict[str, str]
     warnings: tuple[str, ...] = field(default_factory=tuple)
     archive_sha256: str | None = None
+    release_off_normalized: EffectSummary | None = None
+    release_on_normalized: EffectSummary | None = None
+    workloads: tuple[str, ...] = field(default_factory=tuple)
 
     def to_dict(self) -> dict[str, object]:
         return asdict(self)
@@ -195,27 +240,65 @@ def run_timestamp(path: Path) -> str:
     return path.name.split("-", 1)[0]
 
 
-def read_summary(path: Path) -> dict[str, float]:
+def block_workload(run: Path) -> str:
+    """Return the workload a block used.
+
+    Blocks recorded before the workload became selectable carry no `workload`
+    key. They all used the sequential form, so that is the fallback.
+    """
+    values = read_key_values(run / "memory-before.txt")
+    workload = values.get("workload", "sequential")
+    require(workload in OPERATION_SETS, f"unknown workload in {run}: {workload}")
+    return workload
+
+
+def block_cpu_seconds(run: Path) -> float | None:
+    """Return CPU seconds the Redis server spent on a block, if recorded.
+
+    Redis restarts for every block, so `used_cpu_user` plus `used_cpu_sys` from
+    the end-of-block snapshot is that block's total. Blocks recorded before CPU
+    capture existed return None, and callers skip normalization for them.
+    """
+    path = run / "memory-after.txt"
+    if not path.is_file():
+        return None
+    values = read_key_values(path)
+    user = values.get("used_cpu_user")
+    system = values.get("used_cpu_sys")
+    if user is None or system is None:
+        return None
+    try:
+        total = float(user) + float(system)
+    except ValueError as error:
+        raise AuditError(f"malformed CPU fields in {path}: {error}") from error
+    require(total > 0, f"non-positive CPU total in {path}: {total}")
+    return total
+
+
+def read_summary(path: Path, operations: tuple[str, ...]) -> dict[str, float]:
     require(path.is_file(), f"missing summary: {path}")
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
-    require(len(rows) == 2, f"expected two summary rows: {path}")
+    require(
+        len(rows) == len(operations),
+        f"expected {len(operations)} summary rows: {path}, got {len(rows)}",
+    )
     try:
         values = {row["operation"]: float(row["mean_rps"]) for row in rows}
     except (KeyError, TypeError, ValueError) as error:
         raise AuditError(f"malformed summary: {path}: {error}") from error
-    require(set(values) == set(EXPECTED_OPERATIONS), f"unexpected summary operations: {path}")
+    require(set(values) == set(operations), f"unexpected summary operations: {path}")
     return values
 
 
-def read_trials(run: Path, config: AuditConfig) -> dict[str, list[float]]:
+def read_trials(run: Path, config: AuditConfig, operations: tuple[str, ...]) -> dict[str, list[float]]:
     path = run / "trials.csv"
     require(path.is_file(), f"missing trials.csv: {run}")
     with path.open(newline="", encoding="utf-8") as handle:
         rows = list(csv.DictReader(handle))
-    expected_rows = config.expected_trials * len(EXPECTED_OPERATIONS)
+    expected_rows = config.expected_trials * len(operations)
     require(len(rows) == expected_rows, f"expected {expected_rows} trial rows in {path}, got {len(rows)}")
-    values = {operation: [] for operation in EXPECTED_OPERATIONS}
+    values = {operation: [] for operation in operations}
     seen: set[tuple[int, str]] = set()
     for row_number, row in enumerate(rows, 2):
         try:
@@ -232,7 +315,7 @@ def read_trials(run: Path, config: AuditConfig) -> dict[str, list[float]]:
         require((trial, operation) not in seen, f"duplicate trial/operation in {path}: {trial}/{operation}")
         seen.add((trial, operation))
         values[operation].append(rate)
-    for operation in EXPECTED_OPERATIONS:
+    for operation in operations:
         require(len(values[operation]) == config.expected_trials, f"missing {operation} trials in {path}")
     return values
 
@@ -248,18 +331,26 @@ def audit_block(
     snapshot_every: int,
     config: AuditConfig,
 ) -> BlockResult:
-    trials = read_trials(run, config)
-    summary = read_summary(run / "summary.csv")
-    for operation in EXPECTED_OPERATIONS:
+    workload = block_workload(run)
+    operations = OPERATION_SETS[workload]
+    trials = read_trials(run, config, operations)
+    summary = read_summary(run / "summary.csv", operations)
+    for operation in operations:
         recomputed = statistics.fmean(trials[operation])
         require(
             math.isclose(recomputed, summary[operation], abs_tol=1e-5),
             f"summary mean mismatch in {run} for {operation}: "
             f"summary={summary[operation]}, recomputed={recomputed}",
         )
-    raw_files = list(run.glob("trial-????-*.csv"))
-    expected_raw_files = config.expected_trials * len(EXPECTED_OPERATIONS)
-    require(len(raw_files) == expected_raw_files, f"raw trial file count mismatch in {run}")
+    expected_raw_files = config.expected_trials * len(operations)
+    if config.verify_raw_files:
+        # The per-trial files ship as one bundle per block, so unpack before counting.
+        trial_bundles.ensure_extracted(run)
+        raw_files = list(run.glob("trial-????-*.csv"))
+        require(len(raw_files) == expected_raw_files, f"raw trial file count mismatch in {run}")
+        raw_file_count = len(raw_files)
+    else:
+        raw_file_count = 0
     samples = list(run.glob("memory-sample-????.txt"))
     expected_samples = config.expected_trials // snapshot_every
     require(len(samples) == expected_samples, f"memory sample count mismatch in {run}")
@@ -281,17 +372,33 @@ def audit_block(
     require("[always]" in thp_path.read_text(errors="replace"), f"THP was not set to always in {run}")
     memory_before = read_key_values(run / "memory-before.txt")
     require(memory_before.get("allocator") == allocator, f"allocator metadata mismatch in {run}")
+    retries = int(read_key_values(run / "memory-after.txt").get("trial_retries", "0"))
+    if workload == "combined":
+        combined_rps = summary["pushread5"]
+        lpush_mean_rps = None
+        lrange_mean_rps = None
+    else:
+        lpush_mean_rps = summary["lpush5"]
+        lrange_mean_rps = summary["lrange5"]
+        combined_rps = harmonic_mean(lpush_mean_rps, lrange_mean_rps)
+    cpu_seconds = block_cpu_seconds(run)
+    requests_total = config.expected_trials * config.expected_requests * len(operations)
     return BlockResult(
         run=run.name,
         allocator=allocator,
         release_mode=release_mode,
-        lpush_mean_rps=summary["lpush5"],
-        lrange_mean_rps=summary["lrange5"],
-        combined_rps=harmonic_mean(summary["lpush5"], summary["lrange5"]),
-        trial_rows=config.expected_trials * len(EXPECTED_OPERATIONS),
-        raw_trial_files=len(raw_files),
+        workload=workload,
+        lpush_mean_rps=lpush_mean_rps,
+        lrange_mean_rps=lrange_mean_rps,
+        combined_rps=combined_rps,
+        cpu_seconds=cpu_seconds,
+        requests_total=requests_total,
+        requests_per_cpu_second=None if cpu_seconds is None else requests_total / cpu_seconds,
+        trial_rows=config.expected_trials * len(operations),
+        raw_trial_files=raw_file_count,
         memory_samples=len(samples),
         release_confirmations=confirmation_count,
+        trial_retries=retries,
     )
 
 
@@ -344,11 +451,34 @@ def effect_summary(deltas: Iterable[float]) -> EffectSummary:
     )
 
 
+def optional_effect_summary(deltas: Iterable[float | None]) -> EffectSummary | None:
+    """Summarize deltas, or return None if any pair is missing its value.
+
+    A partial normalized summary would mix pairs that recorded CPU time with
+    pairs that did not, so the whole summary is withheld instead.
+    """
+    values = list(deltas)
+    if not values or any(value is None for value in values):
+        return None
+    return effect_summary(value for value in values if value is not None)
+
+
 def t_critical_95(degrees_of_freedom: int) -> float:
     if degrees_of_freedom in T_CRITICAL_95:
         return T_CRITICAL_95[degrees_of_freedom]
     lower = [df for df in T_CRITICAL_95 if df <= degrees_of_freedom]
     return T_CRITICAL_95[max(lower)] if lower else T_CRITICAL_95[1]
+
+
+def manifest_matches_workload(values: dict[str, str], wanted: str) -> bool:
+    """Whether a manifest belongs to the requested workload.
+
+    Manifests written before the workload became selectable carry no key. Those
+    runs all used the sequential form.
+    """
+    if wanted == "any":
+        return True
+    return values.get("workload", "sequential") == wanted
 
 
 def read_manifests(manifest_root: Path) -> list[tuple[str, dict[str, str]]]:
@@ -385,6 +515,7 @@ def audit_dataset(config: AuditConfig, archive_sha256: str | None = None) -> Aud
         for timestamp, values in all_manifests
         if values.get("trials") == str(config.expected_trials)
         and values.get("allocator_order") == "balanced"
+        and manifest_matches_workload(values, config.workload)
     ]
     require(len(manifests) == config.expected_pairs, f"expected {config.expected_pairs} full manifests, got {len(manifests)}")
     balanced_runs = [int(values.get("balanced_run_number", "0")) for _, values in manifests]
@@ -434,7 +565,18 @@ def audit_dataset(config: AuditConfig, archive_sha256: str | None = None) -> Aud
         by_key = {(block.release_mode, block.allocator): block for block in blocks}
         off_delta = percent_delta(by_key[("off", "legacy")], by_key[("off", "temeraire")])
         on_delta = percent_delta(by_key[("on", "legacy")], by_key[("on", "temeraire")])
-        pairs.append(PairResult(start, balanced_run, order, off_delta, on_delta, tuple(blocks)))
+        pairs.append(PairResult(
+            manifest_timestamp=start,
+            balanced_run=balanced_run,
+            allocator_order=order,
+            release_off_delta_percent=off_delta,
+            release_on_delta_percent=on_delta,
+            blocks=tuple(blocks),
+            release_off_normalized_delta_percent=normalized_percent_delta(
+                by_key[("off", "legacy")], by_key[("off", "temeraire")]),
+            release_on_normalized_delta_percent=normalized_percent_delta(
+                by_key[("on", "legacy")], by_key[("on", "temeraire")]),
+        ))
         environments.append(environment_record(system_root / f"{start}.txt", config))
     first_environment = environments[0]
     require(all(record == first_environment for record in environments), "full-run system snapshots are inconsistent")
@@ -442,6 +584,12 @@ def audit_dataset(config: AuditConfig, archive_sha256: str | None = None) -> Aud
         warnings.append("CPU governor, frequency, turbo state, and temperature are not recorded.")
     if not all("libtcmalloc" in (config.raw_dir / "redis" / block.run / "memory-before.txt").read_text(errors="replace") for pair in pairs for block in pair.blocks):
         warnings.append("Per-block /proc allocator mappings are absent; preload was verified separately before the run.")
+    if not config.verify_raw_files:
+        warnings.append(RAW_FILES_SKIPPED_WARNING)
+    retried = [(block.run, block.trial_retries) for pair in pairs for block in pair.blocks if block.trial_retries]
+    if retried:
+        detail = ", ".join(f"{name}={count}" for name, count in retried)
+        warnings.append(f"Some benchmark invocations failed and were repeated: {detail}.")
     return AuditReport(
         raw_dir=str(config.raw_dir),
         total_blocks=sum(len(pair.blocks) for pair in pairs),
@@ -451,6 +599,11 @@ def audit_dataset(config: AuditConfig, archive_sha256: str | None = None) -> Aud
         pairs=tuple(pairs),
         release_off=effect_summary(pair.release_off_delta_percent for pair in pairs),
         release_on=effect_summary(pair.release_on_delta_percent for pair in pairs),
+        release_off_normalized=optional_effect_summary(
+            pair.release_off_normalized_delta_percent for pair in pairs),
+        release_on_normalized=optional_effect_summary(
+            pair.release_on_normalized_delta_percent for pair in pairs),
+        workloads=tuple(sorted({block.workload for pair in pairs for block in pair.blocks})),
         environment=first_environment,
         warnings=tuple(warnings),
         archive_sha256=archive_sha256,
@@ -459,6 +612,19 @@ def audit_dataset(config: AuditConfig, archive_sha256: str | None = None) -> Aud
 
 def percent_delta(legacy: BlockResult, temeraire: BlockResult) -> float:
     return 100.0 * ((temeraire.combined_rps / legacy.combined_rps) - 1.0)
+
+
+def normalized_percent_delta(legacy: BlockResult, temeraire: BlockResult) -> float | None:
+    """Temeraire's change in requests per CPU second, or None if unrecorded.
+
+    This is the comparison that matches the paper's unit. The unnormalized delta
+    cannot separate a throughput gain from the same throughput at higher CPU
+    cost, which matters most for release-on, where TCMalloc runs an extra
+    background thread.
+    """
+    if legacy.requests_per_cpu_second is None or temeraire.requests_per_cpu_second is None:
+        return None
+    return 100.0 * ((temeraire.requests_per_cpu_second / legacy.requests_per_cpu_second) - 1.0)
 
 
 def audit_sensitivity(config: AuditConfig, archive_sha256: str | None = None) -> SensitivityReport:
@@ -483,6 +649,7 @@ def audit_sensitivity(config: AuditConfig, archive_sha256: str | None = None) ->
         and values.get("run_release_on") == "1"
         and values.get("background_release_rate_bps_override", "").isdigit()
         and int(values.get("background_release_rate_bps_override", "0")) > 0
+        and manifest_matches_workload(values, config.workload)
     ]
     require(bool(manifests), f"no sensitivity manifests found in {manifest_root}")
     redis_runs = sorted(path for path in redis_root.glob("*-paper-release-on") if path.is_dir())
@@ -545,7 +712,15 @@ def audit_sensitivity(config: AuditConfig, archive_sha256: str | None = None) ->
         warnings.append("CPU governor, frequency, turbo state, and temperature are not recorded.")
     if not all("libtcmalloc" in (redis_root / block.run / "memory-before.txt").read_text(errors="replace") for pair in pairs for block in pair.blocks):
         warnings.append("Per-block /proc allocator mappings are absent; preload was verified separately before the run.")
+    if not config.verify_raw_files:
+        warnings.append(RAW_FILES_SKIPPED_WARNING)
+    retried = [(block.run, block.trial_retries) for pair in pairs for block in pair.blocks if block.trial_retries]
+    if retried:
+        detail = ", ".join(f"{name}={count}" for name, count in retried)
+        warnings.append(f"Some benchmark invocations failed and were repeated: {detail}.")
     warnings.append("The paper does not state a release rate. Each rate is a local experimental parameter.")
+    if not config.verify_raw_files:
+        warnings.append(RAW_FILES_SKIPPED_WARNING)
     return SensitivityReport(
         raw_dir=str(config.raw_dir),
         total_blocks=sum(len(pair.blocks) for pair in pairs),
@@ -559,14 +734,39 @@ def audit_sensitivity(config: AuditConfig, archive_sha256: str | None = None) ->
     )
 
 
+def optional_cell(value: float | None) -> str:
+    return "" if value is None else f"{value:.6f}"
+
+
 def write_pair_csv(path: Path, report: AuditReport) -> None:
     with path.open("w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle, lineterminator="\n")
-        writer.writerow(("balanced_run", "allocator_order", "release_off_delta_percent", "release_on_delta_percent"))
+        writer.writerow((
+            "balanced_run",
+            "allocator_order",
+            "release_off_delta_percent",
+            "release_on_delta_percent",
+            "release_off_normalized_delta_percent",
+            "release_on_normalized_delta_percent",
+        ))
         for pair in report.pairs:
-            writer.writerow((pair.balanced_run, pair.allocator_order, f"{pair.release_off_delta_percent:.6f}", f"{pair.release_on_delta_percent:.6f}"))
-        writer.writerow(("mean", "", f"{report.release_off.arithmetic_mean_percent:.6f}", f"{report.release_on.arithmetic_mean_percent:.6f}"))
-        writer.writerow(("median", "", f"{report.release_off.median_percent:.6f}", f"{report.release_on.median_percent:.6f}"))
+            writer.writerow((
+                pair.balanced_run,
+                pair.allocator_order,
+                f"{pair.release_off_delta_percent:.6f}",
+                f"{pair.release_on_delta_percent:.6f}",
+                optional_cell(pair.release_off_normalized_delta_percent),
+                optional_cell(pair.release_on_normalized_delta_percent),
+            ))
+        for label, attribute in (("mean", "arithmetic_mean_percent"), ("median", "median_percent")):
+            writer.writerow((
+                label,
+                "",
+                f"{getattr(report.release_off, attribute):.6f}",
+                f"{getattr(report.release_on, attribute):.6f}",
+                "" if report.release_off_normalized is None else f"{getattr(report.release_off_normalized, attribute):.6f}",
+                "" if report.release_on_normalized is None else f"{getattr(report.release_on_normalized, attribute):.6f}",
+            ))
 
 
 def format_interval(effect: EffectSummary) -> str:
@@ -602,8 +802,38 @@ def write_markdown(path: Path, report: AuditReport) -> None:
         f"| Release off | {report.release_off.arithmetic_mean_percent:+.3f}% | {report.release_off.median_percent:+.3f}% | {format_interval(report.release_off)} | {report.release_off.positive_pairs}/{report.release_off.pair_count} |",
         f"| Release on | {report.release_on.arithmetic_mean_percent:+.3f}% | {report.release_on.median_percent:+.3f}% | {format_interval(report.release_on)} | {report.release_on.positive_pairs}/{report.release_on.pair_count} |",
         "",
-        "The interval treats complete run pairs as the replication unit. It does not treat the sequential trials within a block as independent replications.",
+        "The interval accompanies the mean, not the median. It treats complete run pairs as the replication unit and does not treat the sequential trials within a block as independent replications.",
         "",
+        f"Workloads present: {', '.join(report.workloads) or 'unknown'}.",
+        "",
+    ])
+    if report.release_off_normalized is None and report.release_on_normalized is None:
+        lines.extend([
+            "## CPU-normalized summary",
+            "",
+            "Not available. These blocks did not record Redis CPU time, so throughput cannot be expressed in the paper's unit of requests per second per core.",
+            "",
+        ])
+    else:
+        lines.extend([
+            "## CPU-normalized summary",
+            "",
+            "Requests per CPU second, which is the unit the paper reports.",
+            "",
+            "| Mode | Mean | Median | Approximate 95% t interval | Positive pairs |",
+            "|---|---:|---:|---:|---:|",
+        ])
+        for label, effect in (("Release off", report.release_off_normalized), ("Release on", report.release_on_normalized)):
+            if effect is None:
+                lines.append(f"| {label} | not recorded | | | |")
+            else:
+                lines.append(
+                    f"| {label} | {effect.arithmetic_mean_percent:+.3f}% "
+                    f"| {effect.median_percent:+.3f}% | {format_interval(effect)} "
+                    f"| {effect.positive_pairs}/{effect.pair_count} |"
+                )
+        lines.append("")
+    lines.extend([
         "## Warnings",
         "",
     ])
@@ -720,6 +950,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--expected-pairs", type=int, default=4)
     parser.add_argument("--release-rate-bps", type=int, default=16_777_216)
     parser.add_argument(
+        "--workload",
+        choices=("any", "sequential", "combined"),
+        default="any",
+        help=(
+            "Restrict the audit to manifests that used this workload. Use it when "
+            "one result tree holds both readings of the paper's trial sentence."
+        ),
+    )
+    parser.add_argument(
+        "--skip-raw-files",
+        action="store_true",
+        help=(
+            "Do not check the per-trial CSV files. Those travel in the result "
+            "archives rather than in Git, so this makes the reported deltas "
+            "verifiable from a clone alone."
+        ),
+    )
+    parser.add_argument(
         "--mode",
         choices=("balanced", "sensitivity"),
         default="balanced",
@@ -746,6 +994,8 @@ def main() -> int:
             expected_requests=args.expected_requests,
             expected_pairs=args.expected_pairs,
             release_rate_bps=args.release_rate_bps,
+            workload=args.workload,
+            verify_raw_files=not args.skip_raw_files,
         )
         if args.mode == "sensitivity":
             sensitivity = audit_sensitivity(config, archive_sha256)

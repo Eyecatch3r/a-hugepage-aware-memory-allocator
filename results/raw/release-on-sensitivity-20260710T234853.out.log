@@ -1,0 +1,60 @@
+release-on sensitivity: rate=16 MiB/s repeat=1/4 order=legacy-first
+Wrote /workspace/results/raw/system-info/20260710T214854Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260710T214855Z-legacy-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260710T230046Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260710T214854Z
+release-on sensitivity: rate=16 MiB/s repeat=2/4 order=temeraire-first
+Wrote /workspace/results/raw/system-info/20260711T001114Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T001115Z-temeraire-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T012053Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T001114Z
+release-on sensitivity: rate=16 MiB/s repeat=3/4 order=legacy-first
+Wrote /workspace/results/raw/system-info/20260711T023018Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T023019Z-legacy-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T033940Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T023018Z
+release-on sensitivity: rate=16 MiB/s repeat=4/4 order=temeraire-first
+Wrote /workspace/results/raw/system-info/20260711T044913Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T044914Z-temeraire-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T055902Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T044913Z
+release-on sensitivity: rate=64 MiB/s repeat=1/4 order=legacy-first
+Wrote /workspace/results/raw/system-info/20260711T070754Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T070754Z-legacy-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T081712Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T070754Z
+release-on sensitivity: rate=64 MiB/s repeat=2/4 order=temeraire-first
+Wrote /workspace/results/raw/system-info/20260711T093159Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T093200Z-temeraire-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T110059Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T093159Z
+release-on sensitivity: rate=64 MiB/s repeat=3/4 order=legacy-first
+Wrote /workspace/results/raw/system-info/20260711T123130Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T123131Z-legacy-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T135311Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T123130Z
+release-on sensitivity: rate=64 MiB/s repeat=4/4 order=temeraire-first
+Wrote /workspace/results/raw/system-info/20260711T150520Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T150521Z-temeraire-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T161617Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T150520Z
+release-on sensitivity: rate=256 MiB/s repeat=1/4 order=legacy-first
+Wrote /workspace/results/raw/system-info/20260711T173650Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T173651Z-legacy-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T190015Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T173650Z
+release-on sensitivity: rate=256 MiB/s repeat=2/4 order=temeraire-first
+Wrote /workspace/results/raw/system-info/20260711T201128Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T201128Z-temeraire-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T212231Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T201128Z
+release-on sensitivity: rate=256 MiB/s repeat=3/4 order=legacy-first
+Wrote /workspace/results/raw/system-info/20260711T223333Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260711T223334Z-legacy-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260711T234418Z-temeraire-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260711T223333Z
+release-on sensitivity: rate=256 MiB/s repeat=4/4 order=temeraire-first
+Wrote /workspace/results/raw/system-info/20260712T005441Z.txt
+Wrote benchmark results to /workspace/results/raw/redis/20260712T005442Z-temeraire-paper-release-on
+Wrote benchmark results to /workspace/results/raw/redis/20260712T020522Z-legacy-paper-release-on
+Wrote paper-closer run metadata to /workspace/results/raw/paper-closer/20260712T005441Z

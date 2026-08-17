@@ -1,0 +1,9 @@
+temeraire-wrapper: background release enabled rate_bps=16777216
+87:C 10 Jul 2026 21:45:14.470 # oO0OoO0OoO0Oo Redis is starting oO0OoO0OoO0Oo
+87:C 10 Jul 2026 21:45:14.470 # Redis version=6.0.9, bits=64, commit=25214bd7, modified=0, pid=87, just started
+87:C 10 Jul 2026 21:45:14.470 # Configuration loaded
+87:M 10 Jul 2026 21:45:14.473 * Running mode=standalone, port=6380.
+87:M 10 Jul 2026 21:45:14.473 # Server initialized
+87:M 10 Jul 2026 21:45:14.473 * Ready to accept connections
+87:M 10 Jul 2026 21:45:15.632 # User requested shutdown...
+87:M 10 Jul 2026 21:45:15.632 # Redis is now ready to exit, bye bye...
