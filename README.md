@@ -8,6 +8,16 @@ This artifact compares historical public TCMalloc with the legacy pageheap again
 
 > This artifact approximates the Redis case-study methodology from the Temeraire paper using public source code and commodity hardware. It does not reproduce the paper's fleet-scale production evaluation.
 
+## Get the Artifact
+
+```bash
+git clone https://github.com/Eyecatch3r/a-hugepage-aware-memory-allocator.git
+```
+
+The seminar report is `notes/temeraire-seminar-report.pdf`. It reports the
+numbers that the commands in "Verify the Reported Numbers from a Clone"
+regenerate.
+
 ## Repository Layout
 
 ```

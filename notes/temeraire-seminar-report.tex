@@ -23,6 +23,7 @@ columns=fullflexible,
 frame=single
 }
 
+\usepackage{xurl}
 \urlstyle{tt}
 \DeclareRobustCommand{\code}[1]{\path{#1}}
 
@@ -154,6 +155,9 @@ across two independent samples. Normalization proves to be worth under a tenth o
 a percentage point here, because a single-threaded Redis under a saturating
 benchmark holds one core throughout, and the release rate the paper omits matters
 more than the metric: at 64~MiB/s every pair favors the legacy pageheap.
+The artifact, the per-trial data behind every number here, and the source of
+this report are public at
+\url{https://github.com/Eyecatch3r/a-hugepage-aware-memory-allocator}.
 \end{abstract}
 
 \begin{CCSXML} <ccs2012> <concept>
@@ -191,6 +195,15 @@ binary: can the Redis comparison be approximated with public code closely enough
 to observe the same small-effect regime? Reaching that point required two
 environments. Docker/WSL2 provided the development and diagnostic stage; a
 dedicated Linux node provided the final native measurements.
+
+\paragraph*{Artifact availability}
+The artifact is public at
+\url{https://github.com/Eyecatch3r/a-hugepage-aware-memory-allocator}. The
+repository holds the setup and benchmark scripts, the per-trial data of every
+run, the audit and aggregation tools, the unit tests, a static results
+explorer, and the source of this document. A clone regenerates every reported
+figure without a benchmark run, and \code{README.md} states the commands.
+Section~\ref{sec:results} reports the numbers that those commands reproduce.
 
 \section{Background and Temeraire Mechanism}
 \label{sec:background-temeraire}
