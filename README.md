@@ -59,6 +59,7 @@ python3 reproduce.py run --yes -- --balanced-run-number 3
 │   └── tcmalloc_bazel_wrapper/
 ├── archives/                           # per-trial data, not in Git
 ├── notes/
+│   ├── figure-distributions.tex          # generated, see below
 │   ├── redis-temeraire-reproduction-protocol.tex
 │   ├── temeraire-main-presentation.tex
 │   └── temeraire-seminar-report.tex
@@ -202,6 +203,35 @@ everything above.
 
 The site build reads the `audit.json` files these commands write, so run them
 before `build_results_site.py`.
+
+These four commands cover every number in the report. The report also holds
+one generated diagram. To check it, see "The Distribution Figure" below, or
+run `python3 reproduce.py verify`, which covers both.
+
+## The Distribution Figure
+
+Figure 3 of the report shows one box per allocator block for the four
+release-off pairs. Every coordinate comes from the archived per-trial files, so
+the figure carries the same audit trail as the tables.
+
+Write the figure:
+
+```bash
+python3 scripts/generate_distribution_figure.py
+```
+
+Confirm that the committed figure still agrees with the data:
+
+```bash
+python3 scripts/generate_distribution_figure.py --check
+```
+
+The script writes `notes/figure-distributions.tex`, and the report reads that
+file with `\input`. Do not edit the generated file. To change the figure,
+change the script and write the file again.
+
+`python3 reproduce.py verify` runs this check after the four audits, so a stale
+figure fails the standard verification.
 
 ## Interactive Results Explorer
 

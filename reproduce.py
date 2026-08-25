@@ -26,6 +26,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent
 AUDIT = "scripts/audit_bare_metal_results.py"
 SITE_BUILDER = "scripts/build_results_site.py"
+FIGURE = "scripts/generate_distribution_figure.py"
 DOCKER_RUNNER = "scripts/run_paper_closer_redis_experiment.sh"
 BARE_METAL_RUNNER = "scripts/run_bare_metal_redis_experiment.sh"
 
@@ -140,7 +141,7 @@ def check_verify(report: Report) -> None:
     else:
         report.add(FAIL, "python", f"{version}, need 3.10 or later")
 
-    for script in (AUDIT, SITE_BUILDER):
+    for script in (AUDIT, SITE_BUILDER, FIGURE):
         path = REPO_ROOT / script
         report.add(PASS if path.is_file() else FAIL, script,
                    "" if path.is_file() else "missing")
@@ -243,6 +244,12 @@ def cmd_verify(args: argparse.Namespace) -> int:
             print(f"FAIL {step.key}")
 
     print(f"\n{len(steps) - failures}/{len(steps)} audits passed.")
+
+    if args.which == "all":
+        print("\n=== Distribution figure agrees with the trial data ===")
+        if dispatch([sys.executable, FIGURE, "--check"]) != 0:
+            failures += 1
+
     return 1 if failures else 0
 
 
