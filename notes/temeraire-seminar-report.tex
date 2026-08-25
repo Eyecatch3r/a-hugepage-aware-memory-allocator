@@ -773,9 +773,8 @@ Lua interpreter work, and its throughput sits near 135~kRPS rather than 990. Its
 near the paper's $+0.75\%$, but with an interval more than two percentage points
 wide that agreement carries little weight. Its release-on column is worse still:
 one pair at $+2.506\%$ drives a positive mean out of three negative pairs, and
-the interval spans five percentage points. CPU normalization shifts these figures
-by less than $0.01$ percentage points, because these blocks are the most
-saturated of the study.
+the interval spans five percentage points. CPU normalization shifts these figures by under $0.03$ percentage points,
+because these blocks are the most saturated of the study.
 
 Running both readings was worth the compute, because it shows that the choice
 the paper's sentence leaves open is not a detail. The sequential form is the better instrument, and
@@ -854,10 +853,9 @@ eight release-on pairs on node85 favor Temeraire.
 
 
 
-The move to bare metal narrows one question raised by WSL2. The double-digit
-release-on deltas did not recur on node85, where every pair stays within
-$1.5\%$, so they were environment- or time-dependent rather than a property of
-Temeraire. The rerun isolates no cause, because it changed CPU generation, kernel,
+The move to bare metal narrows one question raised by WSL2. The double-digit release-on deltas did not recur on node85, where the largest
+pair delta is $2.5\%$ and every sequential pair stays within $0.6\%$, so they
+were environment- or time-dependent rather than a property of Temeraire. The rerun isolates no cause, because it changed CPU generation, kernel,
 operating system, and time period together.
 
 Reproducing the paper's release-on value is not the same as confirming the
