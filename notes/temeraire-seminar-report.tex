@@ -734,10 +734,9 @@ distributions.}
 \label{fig:distributions}
 \end{figure}
 
-Normalizing for CPU changes little, and the CPU record explains why. Sequential
-blocks spent about 4040 CPU seconds across roughly 4100 seconds of wall clock,
-and combined blocks 14\,860 across 14\,900, so the Redis process held between 98
-and 99.7 percent of a single core throughout. Redis~6.0.9 executes commands on one thread and the benchmark keeps that
+Normalizing for CPU changes little, and the CPU record explains why. Sequential blocks spent about 4060 CPU seconds across roughly 4100 seconds of
+wall clock, and combined blocks 14\,810 across 14\,840, so the Redis process
+held between 98.9 and 99.8 percent of a single core throughout. Redis~6.0.9 executes commands on one thread and the benchmark keeps that
 thread saturated, so requests per second and requests per second per core are
 nearly the same quantity here. The metric gap of Section~\ref{sec:methodology}
 is therefore real but worth under a tenth of a percentage point. That
