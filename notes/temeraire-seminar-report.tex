@@ -206,8 +206,9 @@ The artifact is public at
 \url{https://github.com/Eyecatch3r/a-hugepage-aware-memory-allocator}. The
 repository holds the setup and benchmark scripts, the per-trial data of every
 run, the audit and aggregation tools, the unit tests, a static results
-explorer, and the source of this document. A clone regenerates every reported figure without a benchmark run, and
-\code{README.md} states the commands.
+explorer, and the source of this document. A clone regenerates every reported number and the one generated figure without
+a benchmark run. \texttt{python3 reproduce.py verify} performs both checks in
+seconds, and \code{README.md} documents the rest.
 
 \section{Hugepages, Fragmentation, and the TCMalloc Backend}
 \label{sec:background-temeraire}
