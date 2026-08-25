@@ -18,6 +18,38 @@ The seminar report is `notes/temeraire-seminar-report.pdf`. It reports the
 numbers that the commands in "Verify the Reported Numbers from a Clone"
 regenerate.
 
+## Quick Start
+
+`reproduce.py` is the single entry point. It needs Python 3.10 or later and no
+other package. For a menu, run it with no arguments:
+
+```bash
+python3 reproduce.py
+```
+
+For a direct command, use one of these:
+
+| Command | Result | Cost |
+|---|---|---|
+| `python3 reproduce.py check` | Reports what this machine can do | instant |
+| `python3 reproduce.py verify` | Re-derives every reported number | about 3 seconds |
+| `python3 reproduce.py verify --which reported` | Re-derives the headline result only | about 1 second |
+| `python3 reproduce.py site` | Rebuilds the results explorer | about a minute |
+| `python3 reproduce.py run` | Prints the benchmark command | instant |
+
+`reproduce.py` dispatches to the scripts that the sections below document. It
+computes no result of its own, so `audit_bare_metal_results.py` stays the single
+source of truth for every reported number.
+
+The `run` command is a dry run by default. It prints the command, then stops.
+To execute the command, add `--yes`. Before you do that, read "Time and
+Resource Budget". To pass extra options to the runner script, put them after a
+`--` separator:
+
+```bash
+python3 reproduce.py run --yes -- --balanced-run-number 3
+```
+
 ## Repository Layout
 
 ```
@@ -57,6 +89,7 @@ regenerate.
 ├── site/                               # static results explorer
 ├── tests/
 ├── docker-compose.yml
+├── reproduce.py                        # single entry point
 └── README.md
 ```
 
@@ -250,6 +283,27 @@ Defaults are configured in `docker-compose.yml` and match the paper's experiment
 
 Any deviation from these defaults must be recorded in the report.
 
+## Time and Resource Budget
+
+Read these figures before you start a full run. The benchmark needs a large
+amount of time, because the paper specifies 2000 trials of 1,000,000 requests.
+
+| Task | Cost |
+|---|---|
+| Verify the reported numbers from a clone | about 3 seconds |
+| Build the two allocator libraries with Bazel | tens of minutes |
+| One allocator block, `sequential` workload | 1.14 hours |
+| One allocator block, `combined` workload | 4.11 hours |
+| Eight balanced pairs, both workloads (the reported series) | 90.7 hours |
+
+`BUILD_EXACT_LLVM=1` adds a large one-time cost, because it builds the pinned
+LLVM toolchain from source. This artifact does not record that duration.
+
+The node must stay quiet for the full run. The effect under test is below one
+percent. Other load on the machine is larger than that effect. The Docker/WSL
+runs show this problem: their host drift was more than 200 kRPS while the
+allocator stayed constant.
+
 ## Usage
 
 Two workflows exist. Select the correct one before you start:
@@ -333,13 +387,36 @@ the shared filesystem is much slower for them.
 German numeric locale on node85 writes decimal commas into `summary.csv` and
 breaks its three-column layout.
 
-The compute node cannot fetch the pinned repositories from GitHub. Download the
-source archives, Bazel 4.2.2, and the Bazel dependency archives on a different
-machine, then copy them to the node. Each staged source directory must have a
-`.temeraire-source-ref` file. If you set `TEMERAIRE_OFFLINE_SOURCES=1`,
-`setup_bare_metal_env.sh` checks that file before it builds.
+`TEMERAIRE_OFFLINE_SOURCES` controls how the setup gets its sources. The
+default value is `0`. At the default, `setup_bare_metal_env.sh` clones the
+pinned repositories and downloads Bazelisk. Most nodes need no other
+preparation.
 
-Run the setup from the local work directory:
+Node85 cannot reach GitHub, so the reported runs set the value to `1`. If your
+node cannot reach GitHub, do these steps before the setup:
+
+- Download the source archives, Bazel 4.2.2, and the Bazel dependency archives
+  on a different machine.
+- Copy the archives to the node.
+- Put a `.temeraire-source-ref` file in each staged source directory.
+
+If you set `TEMERAIRE_OFFLINE_SOURCES=1`, the script checks that file before it
+builds.
+
+Run the setup from the local work directory. Two forms are available. Use the
+form that agrees with the network access of your node.
+
+If your node can reach GitHub, use this form:
+
+```bash
+cd /var/tmp/temeraire-work
+
+BUILD_EXACT_LLVM=1 \
+LLVM_BOOTSTRAP_CXXFLAGS="-include cstdint" \
+./scripts/setup_bare_metal_env.sh
+```
+
+If your node cannot reach GitHub, use this form. The reported runs used it:
 
 ```bash
 cd /var/tmp/temeraire-costa-20260716
@@ -349,7 +426,11 @@ TEMERAIRE_OFFLINE_SOURCES=1 \
 LLVM_BOOTSTRAP_CXXFLAGS="-include cstdint" \
 BAZEL_DISTDIR="$PWD/third_party/distdir" \
 ./scripts/setup_bare_metal_env.sh
+```
 
+After the setup, verify the allocator and record the system state:
+
+```bash
 ./scripts/check_allocator_preload.sh
 ./scripts/collect_bare_metal_system_info.sh
 ```
@@ -769,6 +850,23 @@ a positive release rate. Each manifest owns two allocator blocks. The script
 groups the pairs by rate and reports one summary for each rate. It reads the rate
 from the manifest, so it audits 64 MiB/s and 256 MiB/s together. It skips the
 balanced manifests, because those request both release modes.
+
+### Audit your own run
+
+The audit is not limited to the archived results. `--raw-dir` accepts any
+result directory that has the same layout. After your own run, give the script
+your output directory:
+
+```bash
+python3 scripts/audit_bare_metal_results.py \
+  --mode balanced \
+  --workload sequential \
+  --raw-dir <your-result-directory> \
+  --output-dir results/processed/my-run
+```
+
+The script exits non-zero if any check fails. Use this check to confirm that
+your run is sound before you compare its numbers with the report.
 
 ### What the script checks
 
