@@ -35,7 +35,7 @@ RELEASE_OFF_SUFFIX = "-paper-release-off"
 # Geometry. One y unit is one kRPS above the axis floor, and the floor and
 # ceiling come from the data, so no whisker can fall outside the axis.
 TICK_STEP = 20.0
-Y_SCALE_CM = 0.040   # height of one kRPS in the picture
+Y_SCALE_CM = 0.036   # height of one kRPS in the picture
 FIRST_CENTER = 0.870
 PAIR_PITCH = 1.300
 ALLOCATOR_PITCH = 0.560

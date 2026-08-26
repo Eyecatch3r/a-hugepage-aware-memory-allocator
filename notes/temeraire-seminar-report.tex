@@ -641,10 +641,10 @@ closed by changing the harness. The processor could not.
 
 The second problem appeared eighteen hours in. A block died at trial 1875 of
 2000, and its Redis log showed a clean shutdown, which made the failure look
-transient. It was not. The run sat inside an SSH session that ended. Redis
-ignores \code{SIGHUP} at startup and \code{redis-benchmark} does not, so the
+transient. It was not. The run sat inside an SSH session that ended, and
+\code{redis-benchmark} does not ignore \code{SIGHUP} as Redis does, so the
 hangup killed the client and the exit trap then closed the server. The clean
-shutdown was the consequence of the failure rather than evidence against it.
+shutdown was the consequence of the failure, not evidence against it.
 
 The third problem destroyed a day of compute. \code{redis-benchmark} builds
 its CSV test name from the command line, so an \code{EVAL} run carries the
@@ -660,15 +660,13 @@ the same extraction, so it caught this only because \code{KEYS[1]} is not a
 number. A plausible but wrong value would have passed.
 
 This section records only the faults that changed a result or a method. The
-artifact carries a longer protocol note listing every dead end in order,
-including those that cost time without changing a number.
+artifact's protocol note lists every dead end in order.
 
-Four changes followed. Each block now records the CPU time of the Redis server
-from \texttt{redis-cli info cpu}, which is that block's total because Redis
-restarts for every block. The workload is selectable, so both readings of the
-paper's trial sentence can be measured. A failed invocation is retried, and
-every attempt reaches the audit as a warning. Runs start in their own session
-through \code{setsid}.
+Four changes followed. Each block records the Redis server's CPU time from
+\texttt{redis-cli info cpu}, which is its total because Redis restarts for
+every block. The workload is selectable, so both readings can be measured. A
+failed invocation is retried, and every attempt reaches the audit as a
+warning. Runs start in their own session through \code{setsid}.
 
 \subsection{Reported result}
 \label{sec:reported-result}
@@ -718,9 +716,12 @@ Release-off does not resolve. The mean is $+0.022\%$ and the median $+0.037\%$,
 with an interval that covers zero and, once normalized, covers the paper's
 $+0.75\%$ as well. Figure~\ref{fig:distributions} shows why four pairs are not
 enough here: the per-trial distributions inside each block span roughly $4\%$,
-an order of magnitude wider than the pairwise deltas that separate them, so the
-allocator difference is a small shift between two heavily overlapping
-populations.
+an order of magnitude wider than the pairwise deltas that separate them, so the allocator difference is a small shift between two heavily overlapping populations.
+
+Pair 8 needs a caveat. Its legacy block holds 154 trials below 960~kRPS
+against 59 in the matched Temeraire block, the long lower whisker in Figure~\ref{fig:distributions}. Block means give that pair $+0.490\%$, the largest
+positive value in Table~\ref{tab:correction-sequential}, while the per-trial
+medians give $-0.171\%$. No other pair changes sign.
 
 \begin{figure}[t]
 \centering
@@ -867,13 +868,11 @@ An effect that reverses between two rates the paper never distinguishes is
 weaker than a $+0.44\%$ headline suggests, and Table~\ref{tab:sensitivity} is
 the part of this study to weigh against it.
 
-Two measurement gaps limited how far these comparisons could be pushed, and
-Section~\ref{sec:reported-result} measured both. The metric gap is worth under
-a tenth of a percentage point for this workload, because a single-threaded
-Redis under a saturating benchmark makes the two units almost the same
-quantity. The workload gap is larger: the two readings of the paper's trial
-sentence differ by a factor of 3.6 in cost and by an order of magnitude in
-interval width. Neither gap is closed by argument, but both are now
+Two measurement gaps limited these comparisons, and Section~\ref{sec:reported-result} measured both. The metric gap is worth under a tenth of a percentage
+point here, because a saturated single-threaded Redis makes the two units
+almost the same quantity. The workload gap is larger: the two readings of the
+paper's trial sentence differ by a factor of 3.6 in cost and by an order of
+magnitude in interval width. Neither is closed by argument, but both are now
 quantified.
 
 Four pairs per condition remain few for sub-one-percent effects. Allocator
