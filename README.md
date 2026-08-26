@@ -433,6 +433,26 @@ result:
 docker compose run --rm -e RUN_RELEASE_OFF=0 -e RUN_RELEASE_ON=1 temeraire-dev bash -lc "./scripts/run_paper_closer_redis_experiment.sh --allocator-order temeraire-first"
 ```
 
+A release-on sensitivity series can be run separately. It repeats the
+release-on comparison at each rate and alternates the allocator order between
+repeats, so odd repeats are legacy-first and even repeats are Temeraire-first:
+
+```bash
+docker compose run --rm -e RELEASE_RATES_MIB="16 64 256" -e RELEASE_SENSITIVITY_REPEATS=4 temeraire-dev bash -lc "./scripts/run_release_on_sensitivity.sh"
+```
+
+`scripts/run_release_on_sensitivity.ps1` runs the same series from PowerShell.
+It sets both variables, sets THP to `always`, and then calls the script inside
+the container:
+
+```powershell
+.\scripts\run_release_on_sensitivity.ps1
+```
+
+Both variables take either commas or spaces, so `16,64,256` and `"16 64 256"`
+are equivalent. The defaults are the three rates above and four repeats. The
+bare-metal variant with those same defaults produced Table 3 of the report.
+
 ### Bare-Metal Debian Path
 
 This workflow runs directly on Debian 13. It produces the measurements in the
