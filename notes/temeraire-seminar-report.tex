@@ -141,7 +141,8 @@ Reaching a trustworthy measurement took two environments and two series.
 Docker/WSL2 drifted by more than 200~kRPS with the allocator held constant,
 and the first bare-metal series recorded no CPU time.
 
-The corrected series reproduces the paper's release-on result. Across four
+At a locally chosen release rate of 16~MiB/s, the corrected series is
+consistent with the paper's release-on result. Across four
 balanced pairs Temeraire gains $+0.401\%$ in raw throughput and $+0.474\%$ in
 requests per CPU second, every pair is positive, and both 95\% intervals
 exclude zero while containing the paper's $+0.44\%$. Release-off stays
@@ -387,8 +388,8 @@ Redis. \HugeRegionLabel{} handles medium-sized allocations that would otherwise
 create large slack regions.
 
 The key Redis-relevant policy is in \HugeFillerLabel{}. The paper describes
-it, and the pinned revision that the artifact builds carries the detail in
-source comments, so this section follows the source. \HugeFillerLabel{} holds
+it, and the pinned TCMalloc revision carries further detail in source comments
+\cite{273711,tcmalloc-source}. \HugeFillerLabel{} holds
 every partly used hugepage in a list and indexes those lists by two
 properties.
 
@@ -422,7 +423,7 @@ its earlier level within one second. A request it cannot serve raises the
 limit, and a cache that stays too large is shrunk. Placement and caching
 therefore pull against each other under release. \HugeFillerLabel{} keeps
 hugepages whole, \HugeCacheLabel{} keeps empty ones ready for reuse, and
-periodic release hands them back to the OS.
+periodic release hands them back to the OS \cite{273711,tcmalloc-source}.
 
 The Redis list workload in the paper performs small list-node and string-value
 allocations. These do not reach \HugeFillerLabel{} individually. The per-CPU and central
@@ -433,7 +434,8 @@ Periodic memory release complicates the picture. When release is enabled,
 TCMalloc can return memory to the OS using mechanisms such as
 \code{MADV_DONTNEED}. The pinned revision adds one policy that matters for
 Section~\ref{sec:sensitivity}: once part of a hugepage goes back to the OS,
-the allocator returns anything else that falls free inside it. A higher
+the allocator returns anything else that falls free inside it
+\cite{tcmalloc-source}. A higher
 release rate therefore breaks more hugepages, and a broken hugepage keeps
 giving memory back. Release interacts with hugepage coverage and adds
 variance, so release-off carries the cleaner placement signal of the two
@@ -489,14 +491,16 @@ background-release methods absent from the pinned revision, so the shared
 objects built but failed to load. The fix resolves those methods dynamically
 when available.
 
-Compiler matching cost more than it looked. The paper mentions LLVM commit
+Matching the compiler required additional changes to the build environment.
+The paper mentions LLVM commit
 \code{cd442157cf} and \code{-O3}, so the artifact built a local LLVM~13.0.0
 toolchain from that commit and used it for Redis, gperftools, and the TCMalloc
 wrapper. One older manifest still marks the exact LLVM path as disabled, so
 the recorded compiler metadata is treated as authoritative.
 
-The most important methodological difficulty was THP. Initial long runs under WSL2/Docker with THP in \code{madvise} mode recorded
-\texttt{AnonHugePages: 0 kB} for Redis, so they looked like controlled
+THP was the main methodological difficulty. Initial long runs under
+WSL2/Docker with THP in \code{madvise} mode recorded zero kilobytes for Redis's
+\code{AnonHugePages}, so they looked like controlled
 allocator comparisons while leaving the hugepage mechanism unevidenced. The
 harness now records THP settings and periodic \code{smaps_rollup} snapshots,
 and the paper-closer runs set THP to \code{always} before benchmarking. Even
@@ -505,12 +509,37 @@ then, later release-on runs showed large changes in absolute host throughput.
 \section{Methodology}
 \label{sec:methodology}
 
+Table~\ref{tab:method-summary} summarizes the final measurement configuration.
+The release-rate sensitivity series changes only the release rate, as described
+in Section~\ref{sec:sensitivity}.
+
+\begin{table}[t]
+\caption{Final measurement configuration on node85.}
+\label{tab:method-summary}
+\footnotesize
+\begin{tabular}{@{}lp{0.59\columnwidth}@{}}
+\toprule
+Parameter & Setting \\
+\midrule
+Redis & 6.0.9; 50 clients; pipeline depth 16 \\
+Allocator & TCMalloc \code{8e534f507074}; legacy or Temeraire backend \\
+Host & Xeon Gold 5318N; Debian 13; Linux 6.12.95 \\
+THP & \code{always}; defrag \code{madvise} \\
+Trial block & 2000 trials; 1,000,000 requests per operation \\
+Pairing & Four pairs per condition; alternating allocator order \\
+Release & Disabled or 16~MiB/s in the corrected series \\
+Primary metric & Combined requests/s; requests per CPU second as a check \\
+\bottomrule
+\end{tabular}
+\end{table}
+
 \subsection{Common benchmark path}
 \label{sec:benchmark-path}
 
 The repository retains a short direct Redis path for smoke tests and allocator
 preload checks. Measurements reported here use the paper-closer path. It fixes
-Redis to version~6.0.9 and uses 2000 trials, 50 clients, and pipeline depth~16.
+Redis to version~6.0.9 \cite{redis-609} and uses 2000 trials, 50 clients, and
+pipeline depth~16.
 Each trial flushes the database and then runs two separate
 \code{redis-benchmark} invocations of 1,000,000 requests each:
 
@@ -587,12 +616,11 @@ into the same comparison. The wrapper now calls the linked TCMalloc API directly
 the preload is scoped to the server, and every release-on run must log its
 requested rate before the benchmark proceeds.
 
-Neither fix was the end of it. Rebuilding the wrapper needed one further Bazel
+Rebuilding the wrapper needed one further Bazel
 dependency, and the container scripts still carried Windows line endings, which
 Linux reports as a missing \texttt{bash\textbackslash r} interpreter rather than
-as a line-ending problem. Both cost more time than the allocator change they were
-meant to enable, which is the ordinary shape of this work: the substantive edit is
-small and the environment around it is not.
+as a line-ending problem. These two integration problems required more changes
+than the allocator wrapper itself.
 
 \subsection{Bare-metal Linux stage}
 
@@ -628,12 +656,13 @@ on any mismatch. Both halves of the archive pass.
 \section{Results}
 \label{sec:results}
 
-\subsection{Three faults that forced a second series}
+\subsection{Corrections required for the second series}
 \label{sec:why-rerun}
 
-The first bare-metal series was complete and audited, and it was measuring the
-wrong thing. Three problems surfaced in an order worth recording, because the
-last two were faults in the harness that produced those very numbers.
+The first bare-metal series was complete and audited but did not measure all
+quantities needed for comparison with the paper. Three problems required a
+corrected series; the last two were harness faults that affected the recorded
+results.
 
 The first came from reading the paper again with the harness open alongside
 it. The metric gap of Section~\ref{sec:benchmark-path} was worse than a caveat here,
@@ -642,14 +671,15 @@ the paper's trial sentence supports a second implementation, and that its
 Redis servers used Skylake Xeons while node85 carries an Ice Lake part. Two of those three gaps could be
 closed by changing the harness. The processor could not.
 
-The second problem appeared eighteen hours in. A block died at trial 1875 of
+After 18 hours, a block terminated at trial 1875 of
 2000, and its Redis log showed a clean shutdown, which made the failure look
 transient. It was not. The run sat inside an SSH session that ended, and
 \code{redis-benchmark} does not ignore \code{SIGHUP} as Redis does, so the
 hangup killed the client and the exit trap then closed the server. The clean
 shutdown was the consequence of the failure, not evidence against it.
 
-The third problem destroyed a day of compute. \code{redis-benchmark} builds
+The third problem invalidated the initial aggregation of a 16-hour block.
+\code{redis-benchmark} builds
 its CSV test name from the command line, so an \code{EVAL} run carries the
 whole Lua source in that field, commas included. The harness split the line on
 commas and took the second field, which for such a run is the fragment
@@ -657,8 +687,8 @@ commas and took the second field, which for such a run is the fragment
 \code{LPUSH} and \code{LRANGE} names carry no commas, which is why the fault
 stayed hidden until the second workload ran. It was recoverable, because the
 runner writes each invocation's output to its own file first, and a separate
-utility re-derives \code{trials.csv} from those files. The episode still
-exposes a weakness in the audit: the summary and the trial table descend from
+utility re-derives \code{trials.csv} from those files. The failure exposes a
+weakness in the audit: the summary and the trial table descend from
 the same extraction, so it caught this only because \code{KEYS[1]} is not a
 number. A plausible but wrong value would have passed.
 
@@ -683,8 +713,9 @@ repaired.
 \begin{table}[ht]
 \caption{Reported result. Correction run on node85, sequential workload. Deltas
 in raw throughput and in requests per CPU second, the unit the paper reports.
-Intervals are four-pair Student-t intervals on the log-transformed pair ratios
-and accompany the mean.}
+Intervals are four-pair Student-t confidence intervals on the log-transformed
+pair ratios and accompany the mean. The pair, not an individual trial, is the
+unit of statistical analysis.}
 \label{tab:correction-sequential}
 \footnotesize
 \begin{tabular}{@{}lrrr@{}}
@@ -708,7 +739,8 @@ Paper           & & $+0.75\%$ & $+0.44\%$ \\
 \end{tabular}
 \end{table}
 
-Release-on at 16~MiB/s reproduces the paper. All four pairs favor Temeraire and
+At 16~MiB/s, the release-on result is consistent with the value reported in the
+paper. All four pairs favor Temeraire and
 the mean is $+0.401\%$, with an interval that excludes zero. Normalizing for CPU
 moves the mean to $+0.474\%$, and that interval excludes zero as well. The
 paper's $+0.44\%$ falls inside both. It is the only condition in the study that separates from the baseline in
@@ -773,7 +805,8 @@ Median        & & $+0.842\%$ & $-0.194\%$ \\
 \end{tabular}
 \end{table}
 
-The combined reading costs far more and measures far less. A block takes 4.11~hours against 1.14, because an \code{EVAL} request carries
+The combined reading requires 4.11~hours per block rather than 1.14 and produces
+wider confidence intervals, because an \code{EVAL} request carries
 Lua interpreter work, and its throughput sits near 135~kRPS rather than 990. Its release-off median of $+0.842\%$ lands
 near the paper's $+0.75\%$, but with an interval more than two percentage points
 wide that agreement carries little weight. Its release-on column is worse still:
@@ -781,9 +814,10 @@ one pair at $+2.506\%$ drives a positive mean out of three negative pairs, and
 the interval spans five percentage points. CPU normalization shifts these figures by under $0.03$ percentage points,
 because these blocks are the most saturated of the study.
 
-Running both readings was worth the compute, because it shows that the choice
-the paper's sentence leaves open is not a detail. The sequential form is the better instrument, and
-Table~\ref{tab:correction-sequential} rests on it.
+The two readings show that the ambiguity in the paper's sentence changes the
+measurement materially. For this comparison, the sequential form avoids Lua
+interpreter overhead and produces narrower confidence intervals;
+Table~\ref{tab:correction-sequential} therefore uses it.
 
 \subsection{Release-rate sensitivity}
 \label{sec:sensitivity}
@@ -823,14 +857,15 @@ Temeraire between $1.2\%$ and $1.8\%$ slower in each quarter. The sequence is no
 64~MiB/s, then moves back toward zero at 256~MiB/s. The rerelease policy of
 Section~\ref{sec:temeraire-placement} is one candidate mechanism, since a
 higher rate breaks more hugepages and each broken hugepage keeps returning
-memory. Four pairs cannot test that explanation, and this report does not
-claim it. Whatever the release rate does to this workload, it does not do it
-smoothly.
+memory. Four pairs provide insufficient evidence to distinguish that mechanism
+from run-to-run variation, so this report does not claim it. The observed
+sequence does not support a monotonic relationship between release rate and
+throughput.
 
 \subsection{What the earlier series established}
 \label{sec:earlier-series}
 
-Two findings from the earlier work still carry weight.
+Two findings from the earlier work remain relevant.
 
 The Docker/WSL2 stage could not carry a sub-one-percent claim. Absolute
 throughput moved by more than 200~kRPS across a single series and later
@@ -863,13 +898,12 @@ pair delta is $2.5\%$ and every sequential pair stays within $0.6\%$, so they
 were environment- or time-dependent rather than a property of Temeraire. The rerun isolates no cause, because it changed CPU generation, kernel,
 operating system, and time period together.
 
-Reproducing the paper's release-on value is not the same as confirming the
-paper's claim, and the difference is the release rate. Since the paper omits its
+Agreement with the paper's release-on value does not confirm the paper's claim,
+because the release rate remains unknown. Since the paper omits its
 rate, 16~MiB/s has no claim to being the setting behind $+0.44\%$, and the
 64~MiB/s aggregate runs the other way with an interval that also excludes zero.
-An effect that reverses between two rates the paper never distinguishes is
-weaker than a $+0.44\%$ headline suggests, and Table~\ref{tab:sensitivity} is
-the part of this study to weigh against it.
+The sign reversal between two rates limits the evidential value of the
+$+0.44\%$ result. Table~\ref{tab:sensitivity} documents this limitation.
 
 Two measurement gaps limited these comparisons, and Section~\ref{sec:reported-result} measured both. The metric gap is worth under a tenth of a percentage
 point here, because a saturated single-threaded Redis makes the two units
@@ -905,20 +939,22 @@ placement \cite{10.5555/3026877.3026931,10.1145/3297858.3304064}.
 \section{Conclusion}
 \label{sec:conclusion}
 
-This report reproduces the Redis case study alone, on an artifact narrowed
+This report examines the public Redis portion of the case study, using an
+artifact narrowed
 from a generic allocator benchmark to Redis~6.0.9 and from glibc against
 gperftools to legacy TCMalloc against Temeraire. WSL2 host drift made the
 first stage unusable as final evidence, and bare-metal Linux removed those
 swings.
 
-Release-on at 16~MiB/s reproduces the paper. Across four fresh pairs Temeraire
+At 16~MiB/s, the release-on result is consistent with the value reported in the
+paper. Across four fresh pairs Temeraire
 gains $+0.401\%$ in raw throughput and $+0.474\%$ in requests per CPU second,
 every pair is positive, and both intervals exclude zero while containing the
 paper's $+0.44\%$. Seven of the eight release-on pairs measured on node85
 favor Temeraire. Release-off stays unresolved: two independent four-pair
 samples put it at $-0.34\%$ and $+0.037\%$ with intervals that overlap almost
-entirely, so the earlier reading of the negative sample as inconsistent with
-the paper does not survive the second.
+entirely, so the second sample does not support the earlier interpretation of
+the negative sample as inconsistent with the paper.
 
 Two of the three known deviations are now measured rather than assumed: CPU
 normalization is worth under a tenth of a percentage point for a single-threaded saturated Redis, and the two readings of the paper's trial sentence
