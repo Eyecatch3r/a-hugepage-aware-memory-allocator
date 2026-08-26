@@ -131,31 +131,24 @@ draw=myborder
 \renewcommand{\shortauthors}{Costa}
 
 \begin{abstract}
-Temeraire is a hugepage-aware extension of TCMalloc that aims to improve
-application performance by preserving hugepage coverage and reducing TLB
-pressure. The original OSDI~2021 paper evaluates Temeraire through
-application studies, a Google fleet experiment, and a production rollout.
-This report deliberately narrows reproduction to the part that can be
-approximated with public code: the Redis~6.0.9 case study.
+Temeraire is a hugepage-aware extension of TCMalloc that aims to preserve
+hugepage coverage and reduce TLB pressure. The original OSDI~2021 paper
+evaluates it through application studies, a Google fleet experiment, and a
+production rollout. This report reproduces the one part that public code
+reaches: the Redis~6.0.9 case study.
 
-The artifact began as a generic allocator benchmark. Turning it into a Redis
-reproduction meant pinning Redis~6.0.9, building legacy and hugepage-aware
-libraries from a historical public TCMalloc revision, and verifying the loaded
-allocator at runtime. A trustworthy measurement took two environments and two series: Docker/WSL2
-drifted by more than 200~kRPS with the allocator held constant, and the first
-bare-metal series recorded no CPU time.
+Reaching a trustworthy measurement took two environments and two series.
+Docker/WSL2 drifted by more than 200~kRPS with the allocator held constant,
+and the first bare-metal series recorded no CPU time.
 
 The corrected series reproduces the paper's release-on result. Across four
-balanced pairs the Temeraire delta is $+0.401\%$ in raw throughput and
-$+0.474\%$ in requests per CPU second. All four pairs are positive, and both
-95\% intervals exclude zero while containing the paper's $+0.44\%$.
-Release-off centres on zero and stays unresolved
-across two independent samples. Normalization is worth under a tenth of a percentage point here, because a
-single-threaded Redis under a saturating benchmark holds one core throughout.
-The release rate the paper omits matters more: at 64~MiB/s every pair favors
-the legacy pageheap.
-The artifact, the per-trial data behind every number, and the source of this
-report are public at
+balanced pairs Temeraire gains $+0.401\%$ in raw throughput and $+0.474\%$ in
+requests per CPU second, every pair is positive, and both 95\% intervals
+exclude zero while containing the paper's $+0.44\%$. Release-off stays
+unresolved across two independent samples. The release rate the paper omits
+matters more than the metric: at 64~MiB/s every pair favors the legacy
+pageheap. The artifact, the per-trial data behind every number, and the source
+of this report are public at
 \url{https://github.com/Eyecatch3r/a-hugepage-aware-memory-allocator}.
 \end{abstract}
 
@@ -420,6 +413,16 @@ fragmentation. When a large request leaves a tail, that tail is donated to
 \HugeFillerLabel{}, which then prefers regular hugepages over freshly donated
 ones whatever their free-run measure, so that a donated tail can rejoin its
 large range once that range is freed.
+
+\HugeCacheLabel{} carries a second policy that the release rate acts on. It
+holds hugepages that are empty but still backed by the kernel, and it sizes
+itself to recent demand. The source states the goal: the cache should be as
+large as the biggest brief dip, where a dip is a fall in usage that returns to
+its earlier level within one second. A request it cannot serve raises the
+limit, and a cache that stays too large is shrunk. Placement and caching
+therefore pull against each other under release. \HugeFillerLabel{} keeps
+hugepages whole, \HugeCacheLabel{} keeps empty ones ready for reuse, and
+periodic release hands them back to the OS.
 
 The Redis list workload in the paper performs small list-node and string-value
 allocations. These do not reach \HugeFillerLabel{} individually. The per-CPU and central
