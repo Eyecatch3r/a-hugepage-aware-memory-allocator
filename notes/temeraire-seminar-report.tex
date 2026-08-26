@@ -188,12 +188,11 @@ binary: can the Redis comparison be approximated with public code closely enough
 to observe the same small-effect regime? Reaching that point took two environments, a Docker/WSL2 stage for development
 and diagnosis, and a dedicated Linux node for the final native measurements.
 
-The measured scope is two bare-metal series on node85. An earlier series
-covered three release rates with four order-alternated pairs each. A corrected
-series then ran 90.7 hours over eight balanced pairs and both readings of the
-paper's workload. Every allocator block holds 2000 trials, and an audit script
-re-derives every reported mean from the raw per-trial files. A Docker/WSL2
-stage came first and is kept as a record rather than as evidence.
+The measured scope is two bare-metal series on node85. The earlier series
+covered three release rates; the 90.7-hour correction series covered both
+readings of the paper's workload. Each condition has four order-alternated
+pairs of 2000-trial blocks. An audit script re-derives every reported mean from
+the raw files. The preceding Docker/WSL2 stage is retained only as a record.
 
 \paragraph*{Artifact availability}
 The artifact is public at
@@ -469,14 +468,11 @@ against \code{//tcmalloc}, and the legacy build also links against
 \code{//tcmalloc:want_no_hpaa}. The harness selects the library through
 \code{LD_PRELOAD}.
 
-Bazel let the artifact use TCMalloc's native build graph instead of
-reconstructing allocator dependencies, compiler flags, and link semantics
-elsewhere. It also kept the comparison narrow: both libraries come from the
-same wrapper source, and the intended difference is the allocator target plus
-the extra \code{//tcmalloc:want_no_hpaa} dependency. The cost was integration friction: a pinned Bazelisk, the LLVM path threaded
-through Bazel's action and repository environments, an external workspace that
-inherited no Abseil dependency, and target visibility that forced the wrapper
-into \code{tcmalloc/testing}.
+Bazel preserves TCMalloc's native dependency graph and keeps the comparison
+narrow: both libraries use the same wrapper source, with the allocator target
+and \code{//tcmalloc:want_no_hpaa} dependency as the intended difference.
+Integration required a pinned Bazelisk, explicit LLVM paths and a wrapper under
+\code{tcmalloc/testing} because of target visibility.
 
 Runtime verification is necessary. Redis reports
 \texttt{mem\_allocator: libc} from its own build metadata even when
@@ -486,10 +482,9 @@ into the Redis process.
 
 
 
-A later validation run uncovered a symbol mismatch: the wrapper referenced
-background-release methods absent from the pinned revision, so the shared
-objects built but failed to load. The fix resolves those methods dynamically
-when available.
+A validation run found that the wrapper referenced background-release methods
+absent from the pinned revision. The shared objects built but did not load; the
+fix resolves those methods dynamically when available.
 
 Matching the compiler required additional changes to the build environment.
 The paper mentions LLVM commit
@@ -598,29 +593,18 @@ interaction with background memory return and can mask the placement signal.
 \subsection{Docker/WSL2 development stage}
 \label{sec:wsl2-stage}
 
-The first complete setup used a Debian~12 container on Docker Desktop and its
-shared WSL2 kernel. It carried the pinned builds, preload checks, benchmark parameters, THP
-instrumentation, and balanced ordering. Once THP
-was set to \code{always}, Redis reported non-zero hugepage use. The container
-stayed a good development environment and made a poor measuring instrument, for
-reasons Section~\ref{sec:earlier-series} gives.
+The first setup used Debian~12 on Docker Desktop's shared WSL2 kernel. It
+supported the pinned builds, preload checks and THP instrumentation, but host
+drift made it unsuitable for final measurements (Section~\ref{sec:earlier-series}).
 
-Two faults found in that stage shaped everything after it. The runner started
-TCMalloc's background-actions thread without setting a release rate, which the
-pinned revision defaults to zero, so nothing labelled release-on had performed
-periodic release. The label had been wrong for the whole series. Fixing it
-exposed a second fault: the wrapper's dynamic symbol lookups had been failing
-silently, and \code{LD_PRELOAD} had leaked from the Redis server to
-\code{redis-cli} and \code{redis-benchmark}, mixing client and server allocators
-into the same comparison. The wrapper now calls the linked TCMalloc API directly,
-the preload is scoped to the server, and every release-on run must log its
-requested rate before the benchmark proceeds.
+Two faults were corrected before the native runs. The background thread
+had used the revision's default release rate of zero, so the release-on label
+was false. In addition, failed dynamic symbol lookups and an inherited preload
+mixed client and server allocators. The wrapper now calls the
+linked API, scopes preload to Redis and requires a logged release rate.
 
-Rebuilding the wrapper needed one further Bazel
-dependency, and the container scripts still carried Windows line endings, which
-Linux reports as a missing \texttt{bash\textbackslash r} interpreter rather than
-as a line-ending problem. These two integration problems required more changes
-than the allocator wrapper itself.
+The corrected wrapper also required one Bazel dependency and conversion of
+Windows line endings in the container scripts.
 
 \subsection{Bare-metal Linux stage}
 
@@ -633,13 +617,10 @@ GNU/Linux~13 (trixie) on kernel \code{6.12.95+deb13-amd64} with no
 virtualization detected. THP is set to \code{always} with defrag
 \code{madvise}.
 
-The move exposed a different set of practical problems. The shared home
-directory was too slow for Bazel's many small files, so the build and runs
-moved to \code{/var/tmp}. The compute node could not fetch the pinned sources,
-so the build ran offline from staged archives. The old LLVM revision needed
-\texttt{-include cstdint} under Debian~13's host compiler, and the German
-locale produced decimal commas in CSV files, so the native runner now sets
-\code{LC_ALL=C}.
+Builds and runs moved to \code{/var/tmp} because the shared home directory was
+too slow for Bazel. The offline build used staged archives. Debian~13 required
+\texttt{-include cstdint} for the old LLVM revision, and the runner sets
+\code{LC_ALL=C} to prevent decimal commas in CSV files.
 
 After three smoke runs and two ten-trial pilots, four full balanced pairs ran
 at 16~MiB/s, each pair covering legacy and Temeraire with release disabled and
@@ -664,42 +645,29 @@ quantities needed for comparison with the paper. Three problems required a
 corrected series; the last two were harness faults that affected the recorded
 results.
 
-The first came from reading the paper again with the harness open alongside
-it. The metric gap of Section~\ref{sec:benchmark-path} was worse than a caveat here,
-because the artifact recorded no CPU time at all. The same reading showed that
-the paper's trial sentence supports a second implementation, and that its
-Redis servers used Skylake Xeons while node85 carries an Ice Lake part. Two of those three gaps could be
-closed by changing the harness. The processor could not.
+First, the artifact recorded no CPU time and therefore could not reconstruct the
+paper's CPU-normalized metric. The same review identified a second possible
+workload implementation and the unmatched Skylake/Ice Lake processors. The
+harness could address the first two gaps, but not the hardware difference.
 
-After 18 hours, a block terminated at trial 1875 of
-2000, and its Redis log showed a clean shutdown, which made the failure look
-transient. It was not. The run sat inside an SSH session that ended, and
-\code{redis-benchmark} does not ignore \code{SIGHUP} as Redis does, so the
-hangup killed the client and the exit trap then closed the server. The clean
-shutdown was the consequence of the failure, not evidence against it.
+Second, an SSH hangup terminated \code{redis-benchmark} at trial 1875 of 2000;
+the exit trap then produced the clean Redis shutdown recorded in the log. Runs
+now start in their own session.
 
-The third problem invalidated the initial aggregation of a 16-hour block.
-\code{redis-benchmark} builds
-its CSV test name from the command line, so an \code{EVAL} run carries the
-whole Lua source in that field, commas included. The harness split the line on
-commas and took the second field, which for such a run is the fragment
-\code{KEYS[1]}, so a sixteen-hour block came out with a mean of zero. Plain
-\code{LPUSH} and \code{LRANGE} names carry no commas, which is why the fault
-stayed hidden until the second workload ran. It was recoverable, because the
-runner writes each invocation's output to its own file first, and a separate
-utility re-derives \code{trials.csv} from those files. The failure exposes a
-weakness in the audit: the summary and the trial table descend from
-the same extraction, so it caught this only because \code{KEYS[1]} is not a
-number. A plausible but wrong value would have passed.
+Third, commas in an \code{EVAL} test name broke the CSV parser and produced a
+zero mean for a 16-hour block. Per-invocation raw files allowed reconstruction
+of \code{trials.csv}. The failure also exposed correlated outputs in the audit:
+the summary and trial table use the same extraction, so a plausible incorrect
+value could have passed.
 
 This section records only the faults that changed a result or a method. The
 artifact's protocol note lists every dead end in order.
 
-Four changes followed. Each block records the Redis server's CPU time from
-\texttt{redis-cli info cpu}, which is its total because Redis restarts for
+Each block now records the Redis server's CPU time using \code{redis-cli} and
+\code{info cpu}. This is its total because Redis restarts for
 every block. The workload is selectable, so both readings can be measured. A
 failed invocation is retried, and every attempt reaches the audit as a
-warning. Runs start in their own session through \code{setsid}.
+warning.
 
 \subsection{Reported result}
 \label{sec:reported-result}
