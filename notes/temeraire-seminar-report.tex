@@ -673,9 +673,9 @@ warning. Runs start in their own session through \code{setsid}.
 
 Every block of the corrected series holds 2000 trials, every release-on log
 confirms the 16~MiB/s rate, no block needed a retry, and both launcher status
-files record a zero exit code. Of the 32 blocks, 28 re-derive byte-identical
-summaries from their raw per-trial files. The four that differ are the set
-damaged by the extraction fault, repaired as described above.
+files record a zero exit code. All 32 blocks re-derive their summaries from the raw per-trial files,
+including the four that the extraction fault damaged and a separate utility
+repaired.
 
 \begin{table}[ht]
 \caption{Reported result. Correction run on node85, sequential workload. Deltas

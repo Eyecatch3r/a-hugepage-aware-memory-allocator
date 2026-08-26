@@ -168,6 +168,35 @@ decimal commas into those files before `run_bare_metal_redis_experiment.sh` set
 `20260716T154227Z`. The audit script rejects any block that does not have 2000
 trials, so these blocks stay out of all results.
 
+### Rebuild derived summaries
+
+`trials.csv` and `summary.csv` are derived files. The raw record is the set of
+per-trial `redis-benchmark` outputs, which the runner writes verbatim. If the
+runner extracts a rate incorrectly, `rebuild_trial_summaries.py` re-derives both
+files from those outputs, so the fault costs no benchmark time.
+
+Report what would change, without writing:
+
+```bash
+python3 scripts/rebuild_trial_summaries.py --raw-dir results/node85-rerun/raw
+```
+
+Write the rebuilt files:
+
+```bash
+python3 scripts/rebuild_trial_summaries.py --raw-dir results/node85-rerun/raw --apply
+```
+
+The script refuses to write unless every trial file in a block parses. It reads
+every per-trial file, so it takes minutes rather than seconds. Against the
+committed archive it reports `0 of 32 blocks would change`.
+
+This tool repaired four blocks of the correction run. `redis-benchmark` builds
+its CSV test name from the command line, so an `EVAL` run carried the whole Lua
+source in that field, commas included. The runner split the line on commas and
+took the second field, which gave the fragment `KEYS[1]` instead of a rate.
+`notes/redis-temeraire-reproduction-protocol.tex` records the episode in full.
+
 ## Verify the Reported Numbers from a Clone
 
 These four commands regenerate every figure in the report. They need no archive,
@@ -392,6 +421,7 @@ Useful overrides:
 - `--allocator-order legacy-first|temeraire-first|balanced` sets which allocator runs first in each release-mode pair. `PAPER_ALLOCATOR_ORDER` sets the same value through the environment.
 - `--balanced-run-number N` sets the balanced run number. Odd numbers are legacy-first. Even numbers are Temeraire-first. `PAPER_BALANCED_RUN_NUMBER` sets the same value through the environment.
 - `PAPER_NUMA_NODE=0` pins Redis and `redis-benchmark` to one NUMA node, if the node gives support.
+- `PAPER_SNAPSHOT_EVERY_TRIALS=250` sets how many trials pass between memory snapshots. Each block records the value it used.
 - `RUN_PERF=1` adds a `perf stat` capture for each allocator mode.
 - `PAPER_BACKGROUND_RELEASE_RATE_BPS=<bytes_per_sec>` sets the allocator background release rate for the release-on runs.
 - `BUILD_EXACT_LLVM=1` builds the pinned LLVM/Clang toolchain from source. Change `LLVM_REF` and `LLVM_REPO_URL` if the paper-era commit needs a different source.
