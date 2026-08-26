@@ -503,6 +503,7 @@ then, later release-on runs showed large changes in absolute host throughput.
 \label{sec:methodology}
 
 \subsection{Common benchmark path}
+\label{sec:benchmark-path}
 
 The repository retains a short direct Redis path for smoke tests and allocator
 preload checks. Measurements reported here use the paper-closer path. It fixes
@@ -563,6 +564,7 @@ effect is clearest with periodic release disabled, since release-on adds
 interaction with background memory return and can mask the placement signal.
 
 \subsection{Docker/WSL2 development stage}
+\label{sec:wsl2-stage}
 
 The first complete setup used a Debian~12 container on Docker Desktop and its
 shared WSL2 kernel. It carried the pinned builds, preload checks, benchmark parameters, THP
@@ -631,7 +633,7 @@ wrong thing. Three problems surfaced in an order worth recording, because the
 last two were faults in the harness that produced those very numbers.
 
 The first came from reading the paper again with the harness open alongside
-it. The metric gap of Section~\ref{sec:methodology} was worse than a caveat here,
+it. The metric gap of Section~\ref{sec:benchmark-path} was worse than a caveat here,
 because the artifact recorded no CPU time at all. The same reading showed that
 the paper's trial sentence supports a second implementation, and that its
 Redis servers used Skylake Xeons while node85 carries an Ice Lake part. Two of those three gaps could be
@@ -738,7 +740,7 @@ Normalizing for CPU changes little, and the CPU record explains why. Sequential 
 wall clock, and combined blocks 14\,810 across 14\,840, so the Redis process
 held between 98.9 and 99.8 percent of a single core throughout. Redis~6.0.9 executes commands on one thread and the benchmark keeps that
 thread saturated, so requests per second and requests per second per core are
-nearly the same quantity here. The metric gap of Section~\ref{sec:methodology}
+nearly the same quantity here. The metric gap of Section~\ref{sec:benchmark-path}
 is therefore real but worth under a tenth of a percentage point. That
 conclusion is specific to a single-threaded saturated server and does not
 carry over to the multithreaded applications in the paper's Table~1.
@@ -836,7 +838,7 @@ makes the numbers uninterpretable rather than merely noisy: the allocator
 delta cannot be separated from the hour in which each block ran. Its release-on median reached $+6.80\%$ at 64~MiB/s, one 256~MiB/s pair reached
 $+15.73\%$, and one release-on pair reached $-12.02\%$ and did not reproduce
 when rerun. All three are an order of magnitude larger than the effect under
-study. The release-rate fault of Section~\ref{sec:methodology} covers this
+study. The release-rate fault of Section~\ref{sec:wsl2-stage} covers this
 whole stage, so its logs are retained as a record of the misconfiguration and
 excluded from every comparison.
 
