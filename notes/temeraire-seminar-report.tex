@@ -663,9 +663,8 @@ value could have passed.
 This section records only the faults that changed a result or a method. The
 artifact's protocol note lists every dead end in order.
 
-Each block now records the Redis server's CPU time using \code{redis-cli} and
-\code{info cpu}. This is its total because Redis restarts for
-every block. The workload is selectable, so both readings can be measured. A
+Each block now records the Redis server's CPU time using \texttt{redis-cli
+info cpu}. This is its total because Redis restarts for every block. The workload is selectable, so both readings can be measured. A
 failed invocation is retried, and every attempt reaches the audit as a
 warning.
 
