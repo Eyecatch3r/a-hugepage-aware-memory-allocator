@@ -90,6 +90,28 @@ class RenderTests(unittest.TestCase):
     def test_it_says_that_it_is_generated(self) -> None:
         self.assertIn("Do not edit", self.text.splitlines()[0])
 
+    def test_every_drawn_point_lies_inside_the_axis(self) -> None:
+        """A whisker outside the axis draws over the labels and the legend."""
+        top = float(re.search(r"\(0\.38,0\) -- \(0\.38,([\d.]+)\)", self.text).group(1))
+        drawn = [
+            float(v)
+            for line in self.text.splitlines()
+            if re.match(r"\\draw\[(whisker|box\w+|medianline)\]", line)
+            for v in re.findall(r"\(-?[\d.]+,(-?[\d.]+)\)", line)
+        ]
+        self.assertTrue(drawn, "no drawing commands found")
+        self.assertGreaterEqual(min(drawn), 0.0,
+                                f"a point falls {-min(drawn):.2f} below the axis")
+        self.assertLessEqual(max(drawn), top,
+                             f"a point falls {max(drawn) - top:.2f} above the axis")
+
+    def test_the_axis_is_not_wider_than_it_needs_to_be(self) -> None:
+        """The floor and ceiling round outward by less than one tick."""
+        boxes = gen.collect(RAW)
+        floor, ceiling = gen.axis_bounds(boxes)
+        self.assertLessEqual(min(b.p5 for b in boxes) - floor, gen.TICK_STEP)
+        self.assertLessEqual(ceiling - max(b.p95 for b in boxes), gen.TICK_STEP)
+
     def test_rendering_is_deterministic(self) -> None:
         self.assertEqual(self.text, gen.render(gen.collect(RAW)))
 
